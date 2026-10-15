@@ -1,10 +1,75 @@
-export default function DashboardView() {
+import { useState, useEffect } from "react";
+import api from "../../services/api";
+
+export default function DashboardView({ onNavigate }) {
+  const [stats, setStats] = useState({
+    total: 5,
+    waiting: 3,
+    resep: 12,
+    sent: 8,
+  });
+  const [patients, setPatients] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchPatients = async () => {
+      try {
+        const res = await api.get("/patients");
+        const data = res.data.data || [];
+        setPatients(data.slice(0, 3));
+        setStats((prev) => ({
+          ...prev,
+          total: data.length,
+          waiting: data.length,
+        }));
+      } catch (error) {
+        setPatients([
+          {
+            id: 1,
+            rm_number: "RM-2024-01892",
+            name: "Siti Budiarti",
+            birth_date: "1991-05-15",
+            gender: "Perempuan",
+            allergies: "Amoxicillin",
+          },
+          {
+            id: 2,
+            rm_number: "RM-2023-01451",
+            name: "Ahmad Rizki",
+            birth_date: "1997-08-22",
+            gender: "Laki-laki",
+            allergies: null,
+          },
+          {
+            id: 3,
+            rm_number: "RM-2023-02114",
+            name: "Budi Santoso",
+            birth_date: "1979-03-10",
+            gender: "Laki-laki",
+            allergies: "Penicillin",
+          },
+        ]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchPatients();
+  }, []);
+
+  if (loading)
+    return (
+      <div className="flex items-center justify-center h-64 text-slate-500">
+        Memuat dashboard...
+      </div>
+    );
+
   return (
     <div>
+      {/* Header */}
       <div className="flex justify-between items-start mb-8">
         <div>
-          <p className="text-xs font-bold text-teal-600 tracking-wider uppercase mb-1">
-            Selasa, 18 Februari 2025
+          <p className="text-xs font-bold text-blue-600 tracking-wider uppercase mb-1">
+            SELASA, 18 FEBRUARI 2025
           </p>
           <h2 className="text-2xl font-bold text-slate-800">
             Selamat datang, dr. Andi Saputra
@@ -13,7 +78,14 @@ export default function DashboardView() {
             Berikut ringkasan pelayanan pasien Anda hari ini.
           </p>
         </div>
-        <button className="bg-blue-600 text-white px-5 py-2.5 rounded-lg text-sm font-semibold hover:bg-blue-700 transition flex items-center gap-2 shadow-sm">
+        <button
+          onClick={() => {
+            console.log("Mulai Pemeriksaan clicked");
+            onNavigate && onNavigate("pasien");
+          }}
+          className="px-5 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition flex items-center gap-2 shadow-sm cursor-pointer"
+          style={{ cursor: "pointer" }}
+        >
           <svg
             className="w-4 h-4"
             fill="none"
@@ -30,128 +102,151 @@ export default function DashboardView() {
           Mulai Pemeriksaan
         </button>
       </div>
-      <div className="grid grid-cols-4 gap-6 mb-8">
-        {[
-          {
-            title: "Pasien Hari Ini",
-            value: "24",
-            sub: "+3 dari kemarin",
-            icon: "M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z",
-            color: "text-blue-600",
-            bg: "bg-blue-50",
-          },
-          {
-            title: "Menunggu Pemeriksaan",
-            value: "6",
-            sub: "Perlu ditangani",
-            icon: "M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z",
-            color: "text-amber-600",
-            bg: "bg-amber-50",
-          },
-          {
-            title: "Resep Hari Ini",
-            value: "18",
-            sub: "Hari ini",
-            icon: "M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z",
-            color: "text-purple-600",
-            bg: "bg-purple-50",
-          },
-          {
-            title: "Resep Terkirim ke Farmasi",
-            value: "15",
-            sub: "83% dari resep",
-            icon: "M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1",
-            color: "text-teal-600",
-            bg: "bg-teal-50",
-          },
-        ].map((stat, idx) => (
-          <div
-            key={idx}
-            className="bg-white p-5 rounded-xl border border-slate-200 shadow-sm"
-          >
-            <div className="flex items-center gap-3 mb-3">
-              <div
-                className={`w-10 h-10 ${stat.bg} rounded-lg flex items-center justify-center`}
-              >
-                <svg
-                  className={`w-5 h-5 ${stat.color}`}
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d={stat.icon}
-                  />
-                </svg>
-              </div>
-              <p className="text-xs font-medium text-slate-500">{stat.title}</p>
-            </div>
-            <p className="text-3xl font-bold text-slate-800">{stat.value}</p>
-            <p className="text-xs text-slate-400 mt-1">{stat.sub}</p>
+
+      {/* Stat Cards */}
+      <div className="grid grid-cols-4 gap-4 mb-8">
+        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs font-medium text-slate-500">
+              Pasien Hari Ini
+            </p>
+            <svg
+              className="w-5 h-5 text-blue-600"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"
+              />
+            </svg>
           </div>
-        ))}
+          <p className="text-3xl font-bold text-slate-800">{stats.total}</p>
+          <p className="text-xs text-teal-600 mt-1">+3 dari kemarin</p>
+        </div>
+        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs font-medium text-slate-500">
+              Menunggu Pemeriksaan
+            </p>
+            <svg
+              className="w-5 h-5 text-amber-600"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+              />
+            </svg>
+          </div>
+          <p className="text-3xl font-bold text-slate-800">{stats.waiting}</p>
+          <p className="text-xs text-amber-600 mt-1">Perlu ditangani</p>
+        </div>
+        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs font-medium text-slate-500">Resep Hari Ini</p>
+            <svg
+              className="w-5 h-5 text-blue-600"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+              />
+            </svg>
+          </div>
+          <p className="text-3xl font-bold text-slate-800">{stats.resep}</p>
+          <p className="text-xs text-slate-500 mt-1">Hari ini</p>
+        </div>
+        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs font-medium text-slate-500">
+              Resep Terkirim ke Farmasi
+            </p>
+            <svg
+              className="w-5 h-5 text-teal-600"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
+              />
+            </svg>
+          </div>
+          <p className="text-3xl font-bold text-slate-800">{stats.sent}</p>
+          <p className="text-xs text-teal-600 mt-1">83% dari resep</p>
+        </div>
       </div>
+
       <div className="grid grid-cols-3 gap-6">
-        <div className="col-span-2 bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-          <div className="flex justify-between items-center mb-6">
-            <div>
-              <h3 className="text-lg font-bold text-slate-800">
-                Antrean Pemeriksaan
-              </h3>
-              <p className="text-xs text-slate-500 mt-1">
-                6 pasien menunggu • Urutan berdasarkan waktu kunjungan
-              </p>
-            </div>
+        {/* Antrean Pemeriksaan */}
+        <div className="col-span-2 bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+          <div className="mb-4">
+            <h3 className="text-lg font-bold text-slate-800">
+              Antrean Pemeriksaan
+            </h3>
+            <p className="text-xs text-slate-500 mt-1">
+              {patients.length} pasien menunggu • Urutan berdasarkan waktu
+              kunjungan
+            </p>
           </div>
-          <div className="space-y-4">
-            {[
-              {
-                name: "Dewi Anggraini",
-                rm: "RM-2025-00217",
-                time: "10:20 WIB",
-                action: "Mulai Pemeriksaan",
-                primary: true,
-              },
-              {
-                name: "Hendra Prakoso",
-                rm: "RM-2024-00642",
-                time: "10:30 WIB",
-                action: "Periksa",
-                primary: false,
-              },
-              {
-                name: "Putri Ramadhani",
-                rm: "RM-2025-00128",
-                time: "10:45 WIB",
-                action: "Periksa",
-                primary: false,
-              },
-            ].map((patient, idx) => (
+          <div className="space-y-3">
+            {patients.map((p, idx) => (
               <div
-                key={idx}
-                className="flex items-center justify-between p-4 bg-slate-50 rounded-lg border border-slate-100 hover:border-slate-200 transition"
+                key={p.id}
+                className="flex items-center justify-between p-4 bg-slate-50 rounded-lg border border-slate-100"
               >
                 <div>
-                  <p className="font-semibold text-slate-800">{patient.name}</p>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    {patient.rm} • {patient.time}
+                  <p className="text-sm font-semibold text-slate-800">
+                    {p.name}
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1">
+                    {p.rm_number} • 09:{30 + idx * 5} WIB
                   </p>
                 </div>
                 <button
-                  className={`px-4 py-2 rounded-lg text-sm font-semibold transition ${patient.primary ? "bg-blue-600 text-white hover:bg-blue-700" : "text-blue-600 hover:bg-blue-50"}`}
+                  onClick={() => {
+                    console.log("Periksa clicked for", p.name);
+                    onNavigate && onNavigate("detail-pasien", p);
+                  }}
+                  className={`px-4 py-2 rounded-lg text-sm font-semibold transition cursor-pointer ${
+                    idx === 0
+                      ? "bg-blue-600 text-white hover:bg-blue-700"
+                      : "text-blue-600 hover:bg-blue-50 bg-white border border-blue-200"
+                  }`}
+                  style={{ cursor: "pointer" }}
                 >
-                  {patient.action}
+                  {idx === 0 ? "Mulai Pemeriksaan" : "Periksa"}
                 </button>
               </div>
             ))}
           </div>
-          <button className="text-sm text-blue-600 font-medium mt-4 hover:underline flex items-center gap-1">
-            Lihat semua pasien menunggu{" "}
+          <button
+            onClick={() => {
+              console.log("Lihat semua clicked");
+              onNavigate && onNavigate("pasien");
+            }}
+            className="mt-4 text-sm text-blue-600 font-medium hover:underline flex items-center gap-1 cursor-pointer"
+            style={{ cursor: "pointer" }}
+          >
+            Lihat semua pasien menunggu
             <svg
-              className="w-3.5 h-3.5"
+              className="w-4 h-4"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -165,46 +260,44 @@ export default function DashboardView() {
             </svg>
           </button>
         </div>
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 flex flex-col">
-          <div className="mb-6">
-            <h3 className="text-lg font-bold text-slate-800">
-              Resep Disahkan Terbaru
-            </h3>
-            <p className="text-xs text-slate-500 mt-1">
-              Resep otomatis terkirim ke instalasi farmasi
-            </p>
-          </div>
-          <div className="space-y-4 flex-1">
+
+        {/* Resep Disahkan Terbaru */}
+        <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
+          <h3 className="text-lg font-bold text-slate-800 mb-1">
+            Resep Disahkan Terbaru
+          </h3>
+          <p className="text-xs text-slate-500 mb-4">
+            Resep otomatis terkirim ke instalasi farmasi
+          </p>
+          <div className="space-y-4">
             {[
               {
                 name: "Siti Budiarti",
-                rsp: "RSP-250218-042",
+                code: "RSP-250218-042",
                 time: "09:42 WIB",
               },
               {
                 name: "Lina Novitasari",
-                rsp: "RSP-250218-031",
+                code: "RSP-250218-031",
                 time: "09:10 WIB",
               },
               {
                 name: "Rina Wulandari",
-                rsp: "RSP-250218-028",
+                code: "RSP-250218-028",
                 time: "08:58 WIB",
               },
-            ].map((resep, idx) => (
+            ].map((r, i) => (
               <div
-                key={idx}
+                key={i}
                 className="pb-4 border-b border-slate-100 last:border-0 last:pb-0"
               >
-                <p className="font-semibold text-slate-800 text-sm">
-                  {resep.name}
+                <p className="text-sm font-semibold text-slate-800">{r.name}</p>
+                <p className="text-xs text-slate-500 mt-1">
+                  {r.code} • {r.time}
                 </p>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  {resep.rsp} • {resep.time}
-                </p>
-                <div className="flex items-center gap-1.5 mt-2">
+                <p className="text-xs text-teal-600 mt-1 flex items-center gap-1">
                   <svg
-                    className="w-3.5 h-3.5 text-teal-500"
+                    className="w-3 h-3"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -216,19 +309,25 @@ export default function DashboardView() {
                       d="M5 13l4 4L19 7"
                     />
                   </svg>
-                  <span className="text-xs text-teal-600 font-medium">
-                    Terkirim ke Farmasi
-                  </span>
-                </div>
+                  Terkirim ke Farmasi
+                </p>
               </div>
             ))}
           </div>
-          <button className="w-full bg-blue-600 text-white py-2.5 rounded-lg text-sm font-semibold hover:bg-blue-700 transition mt-6">
+          <button
+            onClick={() => {
+              console.log("Buat Resep clicked");
+              onNavigate && onNavigate("resep");
+            }}
+            className="w-full mt-6 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition shadow-sm cursor-pointer"
+            style={{ cursor: "pointer" }}
+          >
             Buat Resep
           </button>
         </div>
       </div>
-      <div className="mt-8 p-4 bg-blue-50 border border-blue-100 rounded-lg flex items-start gap-3">
+
+      <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg flex items-start gap-3">
         <svg
           className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5"
           fill="none"
@@ -239,13 +338,12 @@ export default function DashboardView() {
             strokeLinecap="round"
             strokeLinejoin="round"
             strokeWidth={2}
-            d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+            d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
           />
         </svg>
-        <p className="text-sm text-slate-600">
-          <span className="font-semibold text-slate-800">Alur pelayanan:</span>{" "}
-          pemeriksaan → resep rawat jalan → pengesahan dokter → antrean farmasi.
-          Kode tracking dibuat otomatis setelah resep disahkan.
+        <p className="text-sm text-blue-700">
+          Alur pelayanan: pemeriksaan → resep rawat jalan → pengesahan dokter →
+          antrean farmasi. Kode tracking dibuat otomatis setelah resep disahkan.
         </p>
       </div>
     </div>

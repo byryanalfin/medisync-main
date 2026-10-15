@@ -1,51 +1,122 @@
-export default function DaftarPasienView({ onDetail }) {
-  const patients = [
-    {
-      no: "01",
-      name: "Ahmad Rizki",
-      rm: "RM-2023-01451",
-      visit: "Laki-laki · 28 tahun",
-      time: "09:45 WIB",
-      status: "Menunggu Pemeriksaan",
-      statusColor: "bg-blue-100 text-blue-700",
-    },
-    {
-      no: "02",
-      name: "Budi Santoso",
-      rm: "RM-2023-02114",
-      visit: "Laki-laki · 46 tahun",
-      time: "09:35 WIB",
-      status: "Menunggu Pemeriksaan",
-      statusColor: "bg-blue-100 text-blue-700",
-    },
-    {
-      no: "03",
-      name: "Siti Budiarti",
-      rm: "RM-2024-01892",
-      visit: "Perempuan · 34 tahun",
-      time: "09:30 WIB",
-      status: "Menunggu Pemeriksaan",
-      statusColor: "bg-blue-100 text-blue-700",
-    },
-    {
-      no: "04",
-      name: "Dedi Kurniawan",
-      rm: "RM-2024-00215",
-      visit: "Laki-laki · 39 tahun",
-      time: "08:55 WIB",
-      status: "Selesai Pemeriksaan",
-      statusColor: "bg-slate-100 text-slate-600",
-    },
-    {
-      no: "05",
-      name: "Lina Novitasari",
-      rm: "RM-2022-00981",
-      visit: "Perempuan · 31 tahun",
-      time: "08:40 WIB",
-      status: "Selesai Pemeriksaan",
-      statusColor: "bg-slate-100 text-slate-600",
-    },
-  ];
+import { useState, useEffect } from "react";
+import api from "../../services/api";
+
+const emptyForm = {
+  rm_number: "",
+  name: "",
+  birth_date: "",
+  gender: "Laki-laki",
+  allergies: "",
+};
+
+export default function DaftarPasienView({ onDetail, onPeriksa }) {
+  const [patients, setPatients] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [showModal, setShowModal] = useState(false);
+  const [modalMode, setModalMode] = useState("add"); // 'add' | 'edit'
+  const [editingId, setEditingId] = useState(null);
+  const [deletingPatient, setDeletingPatient] = useState(null);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState(emptyForm);
+
+  const fetchPatients = async () => {
+    try {
+      const response = await api.get("/patients");
+      setPatients(response.data.data);
+    } catch (error) {
+      console.error("Gagal ambil data pasien:", error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchPatients();
+  }, []);
+
+  const openAdd = () => {
+    setModalMode("add");
+    setEditingId(null);
+    setForm(emptyForm);
+    setShowModal(true);
+  };
+
+  const openEdit = (p) => {
+    setModalMode("edit");
+    setEditingId(p.id);
+    setForm({
+      rm_number: p.rm_number,
+      name: p.name,
+      birth_date: p.birth_date ? p.birth_date.slice(0, 10) : "",
+      gender: p.gender,
+      allergies: p.allergies || "",
+    });
+    setShowModal(true);
+  };
+
+  const handleSave = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    try {
+      const payload = {
+        ...form,
+        allergies: form.allergies.trim() ? form.allergies.trim() : null,
+      };
+      if (modalMode === "edit") {
+        await api.put(`/patients/${editingId}`, payload);
+        alert("Perubahan berhasil disimpan!");
+      } else {
+        await api.post("/patients", payload);
+        alert("Pasien berhasil ditambahkan!");
+      }
+      setShowModal(false);
+      setForm(emptyForm);
+      fetchPatients();
+    } catch (error) {
+      const errMsg = error.response?.data?.errors
+        ? Object.values(error.response.data.errors)[0][0]
+        : error.response?.data?.message || error.message;
+      alert(
+        (modalMode === "edit"
+          ? "Gagal menyimpan perubahan: "
+          : "Gagal menambah pasien: ") + errMsg,
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    setSaving(true);
+    try {
+      await api.delete(`/patients/${deletingPatient.id}`);
+      alert("Pasien berhasil dihapus.");
+      setDeletingPatient(null);
+      fetchPatients();
+    } catch (error) {
+      alert(
+        "Gagal menghapus: " + (error.response?.data?.message || error.message),
+      );
+      setDeletingPatient(null);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const filteredPatients = patients.filter(
+    (p) =>
+      p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.rm_number.toLowerCase().includes(searchTerm.toLowerCase()),
+  );
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64 text-slate-500">
+        Memuat data pasien...
+      </div>
+    );
+  }
 
   return (
     <div>
@@ -58,44 +129,54 @@ export default function DaftarPasienView({ onDetail }) {
           Temukan pasien dan lanjutkan pemeriksaan rawat jalan hari ini.
         </p>
       </div>
+
       <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-        <div className="mb-6">
-          <h3 className="text-lg font-bold text-slate-800">
-            Pasien Kunjungan Hari Ini
-          </h3>
-          <p className="text-xs text-slate-500 mt-1">
-            Tahap sebelum pemeriksaan • 24 pasien terjadwal • 6 menunggu
-            pemeriksaan
-          </p>
+        <div className="mb-6 flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-bold text-slate-800">
+              Pasien Kunjungan Hari Ini
+            </h3>
+            <p className="text-xs text-slate-500 mt-1">
+              Tahap sebelum pemeriksaan • {filteredPatients.length} pasien
+              terjadwal
+            </p>
+          </div>
+          <button
+            onClick={openAdd}
+            className="px-4 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition flex items-center gap-2 shadow-sm"
+          >
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M12 4v16m8-8H4"
+              />
+            </svg>
+            Tambah Pasien
+          </button>
         </div>
+
         <div className="grid grid-cols-3 gap-4 mb-6">
-          <div className="col-span-1">
-            <label className="block text-xs font-medium text-slate-500 mb-1.5">
+          <div>
+            <label className="block text-xs font-medium text-slate-500 mb-1">
               Pencarian
             </label>
-            <div className="relative">
-              <svg
-                className="w-4 h-4 text-slate-400 absolute left-3 top-3.5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
-                />
-              </svg>
-              <input
-                type="text"
-                placeholder="Cari nama pasien atau nomor rekam medis"
-                className="w-full pl-10 pr-4 py-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-              />
-            </div>
+            <input
+              type="text"
+              placeholder="Cari nama pasien atau nomor rekam medis"
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+            />
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-500 mb-1.5">
+            <label className="block text-xs font-medium text-slate-500 mb-1">
               Status
             </label>
             <select className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
@@ -105,15 +186,17 @@ export default function DaftarPasienView({ onDetail }) {
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-500 mb-1.5">
+            <label className="block text-xs font-medium text-slate-500 mb-1">
               Tanggal
             </label>
-            <select className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
-              <option>18 Feb 2025</option>
-              <option>17 Feb 2025</option>
-            </select>
+            <input
+              type="date"
+              defaultValue="2025-02-18"
+              className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+            />
           </div>
         </div>
+
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
@@ -128,71 +211,120 @@ export default function DaftarPasienView({ onDetail }) {
               </tr>
             </thead>
             <tbody className="text-sm">
-              {patients.map((p, idx) => (
+              {filteredPatients.map((p, idx) => (
                 <tr
-                  key={idx}
+                  key={p.id}
                   className="border-b border-slate-100 hover:bg-slate-50 transition"
                 >
-                  <td className="py-4 px-2 text-slate-500">{p.no}</td>
+                  <td className="py-4 px-2 text-slate-500">
+                    {String(idx + 1).padStart(2, "0")}
+                  </td>
                   <td className="py-4 px-2 font-semibold text-slate-800">
                     {p.name}
                   </td>
                   <td className="py-4 px-2 text-slate-600 font-mono text-xs">
-                    {p.rm}
+                    {p.rm_number}
                   </td>
-                  <td className="py-4 px-2 text-slate-600">{p.visit}</td>
-                  <td className="py-4 px-2 text-slate-600">{p.time}</td>
+                  <td className="py-4 px-2 text-slate-600">
+                    {p.gender} ·{" "}
+                    {new Date().getFullYear() -
+                      new Date(p.birth_date).getFullYear()}{" "}
+                    tahun
+                  </td>
+                  <td className="py-4 px-2 text-slate-600">
+                    09:{30 + idx * 5} WIB
+                  </td>
                   <td className="py-4 px-2">
                     <span
-                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${p.statusColor}`}
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${idx < 2 ? "bg-blue-100 text-blue-700" : "bg-teal-100 text-teal-700"}`}
                     >
                       <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
-                      {p.status}
+                      {idx < 2 ? "Menunggu Pemeriksaan" : "Selesai Pemeriksaan"}
                     </span>
                   </td>
                   <td className="py-4 px-2 text-right">
-                    <button
-                      onClick={onDetail}
-                      className="text-blue-600 font-medium hover:underline text-xs"
-                    >
-                      Detail Pasien
-                    </button>
-                    {p.status === "Menunggu Pemeriksaan" && (
-                      <span className="text-slate-300 mx-1">·</span>
-                    )}
-                    {p.status === "Menunggu Pemeriksaan" && (
-                      <button className="text-blue-600 font-medium hover:underline text-xs">
-                        Periksa
+                    <div className="flex justify-end items-center gap-3">
+                      <button
+                        onClick={() => onDetail && onDetail(p)}
+                        className="text-blue-600 font-medium hover:underline text-xs cursor-pointer"
+                      >
+                        Detail Pasien
                       </button>
-                    )}
+                      <button
+                        onClick={() => onPeriksa && onPeriksa(p)}
+                        className="text-blue-600 font-medium hover:underline text-xs cursor-pointer"
+                      >
+                        Periksa ›
+                      </button>
+                      <button
+                        onClick={() => openEdit(p)}
+                        title="Edit pasien"
+                        className="text-amber-600 hover:text-amber-700 cursor-pointer"
+                      >
+                        <svg
+                          className="w-4 h-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"
+                          />
+                        </svg>
+                      </button>
+                      <button
+                        onClick={() => setDeletingPatient(p)}
+                        title="Hapus pasien"
+                        className="text-red-500 hover:text-red-600 cursor-pointer"
+                      >
+                        <svg
+                          className="w-4 h-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                          />
+                        </svg>
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
-        <div className="flex items-center justify-between mt-6 pt-4 border-t border-slate-100">
-          <p className="text-xs text-slate-500">Menampilkan 1–5 dari 24 data</p>
+
+        <div className="mt-6 flex items-center justify-between">
+          <p className="text-sm text-slate-500">
+            Menampilkan 1–{filteredPatients.length} dari{" "}
+            {filteredPatients.length} data
+          </p>
           <div className="flex items-center gap-2">
-            <button className="px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 rounded-lg">
+            <button className="px-3 py-1.5 text-sm text-slate-500 hover:text-blue-600">
               ‹ Sebelumnya
             </button>
-            <button className="w-8 h-8 flex items-center justify-center bg-blue-600 text-white text-xs font-medium rounded-lg">
+            <button className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium">
               1
             </button>
-            <button className="w-8 h-8 flex items-center justify-center text-slate-600 hover:bg-slate-100 text-xs font-medium rounded-lg">
+            <button className="px-3 py-1.5 text-sm text-slate-500 hover:text-blue-600">
               2
             </button>
-            <button className="w-8 h-8 flex items-center justify-center text-slate-600 hover:bg-slate-100 text-xs font-medium rounded-lg">
-              3
-            </button>
-            <button className="px-3 py-1.5 text-xs font-medium text-blue-600 hover:bg-blue-50 rounded-lg">
+            <button className="px-3 py-1.5 text-sm text-blue-600 hover:text-blue-700">
               Berikutnya ›
             </button>
           </div>
         </div>
       </div>
-      <div className="mt-6 p-4 bg-blue-50 border border-blue-100 rounded-lg flex items-start gap-3">
+
+      <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg flex items-start gap-3">
         <svg
           className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5"
           fill="none"
@@ -203,17 +335,186 @@ export default function DaftarPasienView({ onDetail }) {
             strokeLinecap="round"
             strokeLinejoin="round"
             strokeWidth={2}
-            d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+            d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
           />
         </svg>
-        <p className="text-sm text-slate-600">
-          Data pasien digunakan untuk pelayanan internal. Pilih{" "}
-          <span className="font-semibold text-slate-800">Detail Pasien</span>{" "}
-          untuk melihat riwayat ringkas, atau{" "}
-          <span className="font-semibold text-slate-800">Periksa</span> untuk
-          memulai pemeriksaan.
+        <p className="text-sm text-blue-700">
+          Data pasien digunakan untuk pelayanan internal. Pilih Detail Pasien
+          untuk melihat riwayat ringkas, atau Periksa untuk memulai pemeriksaan.
         </p>
       </div>
+
+      {/* === MODAL TAMBAH / EDIT PASIEN === */}
+      {showModal && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6">
+            <h3 className="text-lg font-bold text-slate-800 mb-1">
+              {modalMode === "edit" ? "Edit Data Pasien" : "Tambah Pasien Baru"}
+            </h3>
+            <p className="text-xs text-slate-500 mb-4">
+              {modalMode === "edit"
+                ? "Perubahan akan langsung tersimpan ke database."
+                : "Data tersimpan ke database dan langsung muncul di daftar kunjungan."}
+            </p>
+
+            <form onSubmit={handleSave} className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">
+                    No. Rekam Medis
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={form.rm_number}
+                    onChange={(e) =>
+                      setForm({ ...form, rm_number: e.target.value })
+                    }
+                    placeholder="RM-2025-00218"
+                    className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">
+                    Nama Lengkap
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={form.name}
+                    onChange={(e) => setForm({ ...form, name: e.target.value })}
+                    placeholder="Nama pasien"
+                    className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">
+                    Tanggal Lahir
+                  </label>
+                  <input
+                    type="date"
+                    required
+                    value={form.birth_date}
+                    onChange={(e) =>
+                      setForm({ ...form, birth_date: e.target.value })
+                    }
+                    className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-500 mb-1">
+                    Jenis Kelamin
+                  </label>
+                  <select
+                    value={form.gender}
+                    onChange={(e) =>
+                      setForm({ ...form, gender: e.target.value })
+                    }
+                    className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                  >
+                    <option>Laki-laki</option>
+                    <option>Perempuan</option>
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-500 mb-1">
+                  Alergi (opsional)
+                </label>
+                <input
+                  type="text"
+                  value={form.allergies}
+                  onChange={(e) =>
+                    setForm({ ...form, allergies: e.target.value })
+                  }
+                  placeholder="Contoh: Penicillin — kosongkan jika tidak ada"
+                  className="w-full px-3 py-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                />
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowModal(false)}
+                  className="px-5 py-2.5 border border-slate-300 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="px-5 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {saving
+                    ? "Menyimpan..."
+                    : modalMode === "edit"
+                      ? "Simpan Perubahan"
+                      : "Simpan Pasien"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* === MODAL KONFIRMASI HAPUS === */}
+      {deletingPatient && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
+                <svg
+                  className="w-5 h-5 text-red-600"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                  />
+                </svg>
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-slate-800">
+                  Hapus Pasien?
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Tindakan ini tidak dapat dibatalkan.
+                </p>
+              </div>
+            </div>
+            <p className="text-sm text-slate-600 mb-6">
+              Anda akan menghapus pasien <b>{deletingPatient.name}</b> (
+              <span className="font-mono text-xs">
+                {deletingPatient.rm_number}
+              </span>
+              ) dari sistem.
+            </p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setDeletingPatient(null)}
+                className="px-5 py-2.5 border border-slate-300 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50"
+              >
+                Batal
+              </button>
+              <button
+                onClick={handleDelete}
+                disabled={saving}
+                className="px-5 py-2.5 bg-red-600 text-white rounded-lg text-sm font-semibold hover:bg-red-700 disabled:opacity-50"
+              >
+                {saving ? "Menghapus..." : "Ya, Hapus"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -11,3 +11,15 @@ body {
   background-color: #f8fafc;
   -webkit-font-smoothing: antialiased; /* Biar font lebih tajam di Mac/Windows */
 }
+
+/* Animasi "nyala-nyala" untuk badge Pembaruan Langsung & step aktif */
+@keyframes live-glow-teal {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(13, 148, 136, 0.45); }
+  50% { box-shadow: 0 0 0 7px rgba(13, 148, 136, 0); }
+}
+@keyframes live-glow-blue {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.45); }
+  50% { box-shadow: 0 0 0 8px rgba(37, 99, 235, 0); }
+}
+.animate-live-teal { animation: live-glow-teal 1.8s ease-in-out infinite; }
+.animate-live-blue { animation: live-glow-blue 1.6s ease-in-out infinite; }
