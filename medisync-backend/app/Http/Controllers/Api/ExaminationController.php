@@ -35,6 +35,7 @@ class ExaminationController extends Controller
             ->with(['doctor', 'prescription'])
             ->orderBy('created_at', 'desc')
             ->get();
+            
         return response()->json([
             'success' => true,
             'data' => $examinations
