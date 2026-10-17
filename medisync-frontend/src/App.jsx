@@ -9,6 +9,7 @@ import TrackingPasienView from "./components/public/TrackingPasienView";
 import ResepDisahkanView from "./components/doctor/ResepDisahkanView";
 import AdminDashboardView from "./components/admin/AdminDashboardView";
 
+// App Component
 function App() {
   const [currentPage, setCurrentPage] = useState("login");
   const [currentView, setCurrentView] = useState("dashboard");
