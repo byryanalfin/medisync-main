@@ -12,7 +12,7 @@ Route::post('/login', [AuthController::class, 'login']);
 // Public: tracking tanpa login
 Route::get('/tracking/{code}', [PrescriptionController::class, 'track']);
 
-// Protected: Semua endpoint butuh token
+// Protected: Semua endpoint membutuhkan token
 Route::middleware('auth:sanctum')->group(function () {
     Route::post('/logout', [AuthController::class, 'logout']);
 
