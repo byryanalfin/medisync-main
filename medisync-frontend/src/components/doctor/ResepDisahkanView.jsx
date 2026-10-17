@@ -1,6 +1,7 @@
 import { useState } from "react";
 import api from "../../services/api";
 
+// Resep Disahkan View Component
 export default function ResepDisahkanView({ onBackToDashboard }) {
   const [presc, setPresc] = useState(() => {
     try {
