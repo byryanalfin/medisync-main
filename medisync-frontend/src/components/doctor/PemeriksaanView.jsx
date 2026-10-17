@@ -1,6 +1,7 @@
 import { useState } from "react";
 import api from "../../services/api";
 
+// Opsi pemeriksaan penunjang yang tersedia
 const OPSI_PENUNJANG = [
   "Laboratorium Darah",
   "Rontgen Thorax",

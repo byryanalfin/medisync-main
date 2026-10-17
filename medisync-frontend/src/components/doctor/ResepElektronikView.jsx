@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import api from "../../services/api";
 
-// Resep Elektronik View Component
 export default function ResepElektronikView({ patient, onSahkan }) {
   const [obatList, setObatList] = useState([
     {
