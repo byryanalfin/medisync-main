@@ -1,58 +1,44 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# MediSync API
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Laravel backend for the React MediSync application. The backend root is a Laravel welcome page; open the React development server to use MediSync.
 
-## About Laravel
+## Local setup
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+Requires PHP 8.3+, Composer, SQLite or MySQL, and Node/npm for the separate frontend.
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+1. Run `composer install`.
+2. Copy `.env.example` to `.env` only on a new installation. Preserve existing database settings.
+3. Run `php artisan key:generate` on a new installation.
+4. Create the SQLite database file if using SQLite, then run `php artisan migrate`.
+5. For a new demonstration database only, run `php artisan db:seed` and `php artisan db:seed --class=DrugSeeder`. Seeders create fictional users and patients and must not run against production patient data.
+6. Serve with Laravel Herd at `http://medisync-backend.test`, or `php artisan serve` at port 8000.
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+The frontend `.env` must use the same server's `/api` URL. CORS origins can be configured with `CORS_ALLOWED_ORIGINS` (comma separated exact origins).
 
-## Learning Laravel
+## API
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+All requests and responses use JSON. Protected endpoints require `Authorization: Bearer <token>`.
 
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+- `POST /api/login`: email and password; rate limited.
+- `GET /api/me`, `POST /api/logout`: current session and token revocation.
+- `GET /api/tracking/{code}`: public tracking; patient name, doctor name, prescribed drugs and service progress. Internal notes, medical-record numbers and BPJS data are excluded. Responses are not cacheable.
+- `GET /api/doctor/dashboard`: authenticated doctor's live statistics.
+- `GET|POST /api/patients`, `GET|PUT|DELETE /api/patients/{id}`: patient records. Patients with examination history cannot be deleted.
+- `POST /api/examinations`, `GET /api/examinations/{id}`, `GET /api/examinations/patient/{id}`: examination workflow. Doctor identity comes from the authenticated user.
+- `GET|POST /api/prescriptions`, `GET|PUT /api/prescriptions/{id}`: prescriptions. Creation is transactional; duplicate prescriptions for one examination are rejected. Only the owning doctor may approve a draft or held prescription.
+- `GET /api/drugs`, `GET /api/drugs/categories`: catalog search; page size limited to 100.
+- `GET /api/pharmacy/queue`, `GET /api/prescriptions/{id}/detail`: pharmacy workflow.
+- `PUT /api/prescriptions/{id}/bpjs`: pharmacist only. Required booleans: `bpjs_card_checked`, `bpjs_identity_checked`, `bpjs_documents_checked`; optional `bpjs_notes` (up to 2000 characters). Partial checks may be saved. The API records the saving staff member and timestamp; complete verification is recorded only when all checks are true. This records manual document review, not an external BPJS integration.
+- `PUT /api/prescriptions/{id}/status`: pharmacist only. Sequential stages: `approved → accepted → preparing → ready → picked_up`. Repeated identical requests are idempotent; skipped or reversed transitions are rejected. Each change has a persisted status event.
 
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
+Doctors can save held prescriptions while waiting for supporting examinations. Inpatient examinations cannot create outpatient prescriptions. Public tracking codes are issued after doctor approval.
 
-## Agentic Development
+## Verification
 
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+`php artisan test` uses an isolated in-memory SQLite database. It does not reset the configured application database.
 
-```bash
-composer require laravel/boost --dev
+Production deployment remains a separate step: configure HTTPS, real staff accounts, production secrets, database backups and the intended access policy for tracking codes. Demo credentials are for local development only.
 
-php artisan boost:install
-```
+## Pharmacy catalog management
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
-
-## Contributing
-
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
-
-## Code of Conduct
-
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
-
-## Security Vulnerabilities
-
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
-
-## License
-
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+Only pharmacy accounts (`admin_apoteker`) can `POST /api/drugs` or `PUT /api/drugs/{drug}`. Fields: required unique `name`, required `unit`, required nonnegative integer `stock`, optional `generic_name` and `category`. Doctors can read/search the same catalog but cannot write it. Stock is the recorded catalog quantity; this feature does not automatically deduct inventory when prescriptions are processed.

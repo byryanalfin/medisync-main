@@ -30,13 +30,13 @@ class User extends Authenticatable
         'password' => 'hashed',
     ];
 
-    // Relasi: User (Dokter) mempunyai banyak Examination
+    // Relasi: User (Dokter) punya banyak Examination
     public function examinations()
     {
         return $this->hasMany(Examination::class, 'doctor_id');
     }
 
-    // Relasi: User (Dokter) mempunyai banyak Prescription
+    // Relasi: User (Dokter) punya banyak Prescription
     public function prescriptions()
     {
         return $this->hasMany(Prescription::class, 'doctor_id');

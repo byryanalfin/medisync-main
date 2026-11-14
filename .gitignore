@@ -1,5 +1,40 @@
-node_modules/
-.env
-dist/
-vendor/
-.vscode/
+# Local credentials and machine configuration
+**/.env
+**/.env.*
+!**/.env.example
+**/.flyenv
+**/.codex/
+**/.mcp.json
+.DS_Store
+**/.DS_Store
+
+# Dependencies and generated builds
+**/node_modules/
+**/vendor/
+**/dist/
+**/public/build/
+**/public/hot
+**/public/storage
+
+# Local databases, exports and runtime files
+**/*.sqlite
+**/*.sqlite-*
+**/*.db
+**/*.db-*
+**/*.sql
+**/*.log
+**/.phpunit.result.cache
+**/.phpunit.cache/
+**/bootstrap/cache/*.php
+**/storage/framework/cache/**
+**/storage/framework/sessions/**
+**/storage/framework/views/**
+**/storage/logs/**
+**/storage/app/**
+!**/storage/**/.gitignore
+
+# Test artifacts and scratch files
+**/test-results/
+**/playwright-report/
+**/coverage/
+work/

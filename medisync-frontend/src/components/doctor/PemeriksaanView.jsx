@@ -1,5 +1,7 @@
+import { useFeedback } from "../../feedbackContext";
 import { useState } from "react";
 import api from "../../services/api";
+import { ageInYears, formatDate, escapeHtml } from "../../utils/format";
 
 const OPSI_PENUNJANG = [
   "Laboratorium Darah",
@@ -12,16 +14,12 @@ export default function PemeriksaanView({
   patient,
   onNext,
   onBackToDashboard,
+  doctor,
 }) {
-  const [keluhan, setKeluhan] = useState(
-    "Demam, batuk kering, nyeri tenggorokan sejak 3 hari.",
-  );
-  const [riwayat, setRiwayat] = useState(
-    "Tidak ada penyakit kronis; tidak minum obat rutin.",
-  );
-  const [diagnosis, setDiagnosis] = useState(
-    "Infeksi Saluran Pernapasan Akut (ISPA)",
-  );
+  const showFeedback = useFeedback();
+  const [keluhan, setKeluhan] = useState("");
+  const [riwayat, setRiwayat] = useState("");
+  const [diagnosis, setDiagnosis] = useState("");
   const [penunjang, setPenunjang] = useState([]);
   const [rawat, setRawat] = useState("jalan");
   const [saving, setSaving] = useState(false);
@@ -36,8 +34,7 @@ export default function PemeriksaanView({
     );
   }
 
-  const age =
-    new Date().getFullYear() - new Date(patient.birth_date).getFullYear();
+  const age = ageInYears(patient.birth_date);
 
   const togglePenunjang = (item) => {
     setPenunjang((prev) =>
@@ -62,6 +59,11 @@ export default function PemeriksaanView({
 
   // MED-6: rawat inap = alur farmasi rawat jalan dihentikan
   const handleLanjut = async () => {
+    if (saving || flowStopped) return;
+    if (!keluhan.trim() || !diagnosis.trim()) {
+      showFeedback("Lengkapi keluhan dan diagnosis sebelum menyimpan pemeriksaan.");
+      return;
+    }
     setSaving(true);
     try {
       await simpanPemeriksaan();
@@ -71,7 +73,7 @@ export default function PemeriksaanView({
         onNext();
       }
     } catch (error) {
-      alert(
+      showFeedback(
         "Gagal menyimpan pemeriksaan: " +
           (error.response?.data?.message || error.message),
       );
@@ -106,21 +108,22 @@ export default function PemeriksaanView({
       <h3>SURAT PENGANTAR PEMERIKSAAN PENUNJANG</h3>
       <p>Nomor: ${nomor}</p>
       <table>
-        <tr><td class="label">Nama Pasien</td><td>: ${patient.name}</td></tr>
-        <tr><td class="label">No. Rekam Medis</td><td>: ${patient.rm_number}</td></tr>
-        <tr><td class="label">Usia / Jenis Kelamin</td><td>: ${age} tahun / ${patient.gender}</td></tr>
-        <tr><td class="label">Diagnosis Kerja</td><td>: ${diagnosis}</td></tr>
-        <tr><td class="label">Pemeriksaan Diminta</td><td>: ${penunjang.join(", ")}</td></tr>
-        <tr><td class="label">Tanggal</td><td>: 18 Feb 2025</td></tr>
+        <tr><td class="label">Nama Pasien</td><td>: ${escapeHtml(patient.name)}</td></tr>
+        <tr><td class="label">No. Rekam Medis</td><td>: ${escapeHtml(patient.rm_number)}</td></tr>
+        <tr><td class="label">Usia / Jenis Kelamin</td><td>: ${age} tahun / ${escapeHtml(patient.gender)}</td></tr>
+        <tr><td class="label">Diagnosis Kerja</td><td>: ${escapeHtml(diagnosis)}</td></tr>
+        <tr><td class="label">Pemeriksaan Diminta</td><td>: ${escapeHtml(penunjang.join(", "))}</td></tr>
+        <tr><td class="label">Tanggal</td><td>: ${escapeHtml(formatDate(new Date()))}</td></tr>
       </table>
       <p>Mohon dilakukan pemeriksaan penunjang tersebut di atas untuk menunjang penegakan diagnosis.
       Hasil pemeriksaan harap dikirim kembali ke dokter pengirim melalui sistem MediSync.</p>
       <div class="ttd">
         <p>Dokter Pengirim,</p><br/><br/>
-        <p><b>dr. Andi Saputra</b><br/>Dokter Umum • NIP D001</p>
+        <p><b>${escapeHtml(doctor?.name)}</b><br/>Dokter Pengirim</p>
       </div>
       </body></html>`;
     const w = window.open("", "_blank");
+    if (!w) { showFeedback("Izinkan popup untuk mencetak surat pengantar."); return; }
     w.document.write(html);
     w.document.close();
     w.focus();
@@ -130,10 +133,10 @@ export default function PemeriksaanView({
   return (
     <div>
       <div className="mb-6">
-        <p className="text-xs font-bold text-blue-600 tracking-wider uppercase mb-1">
+        <p className="text-xs font-bold text-medisync-primary tracking-wider uppercase mb-1">
           PORTAL DOKTER / PEMERIKSAAN
         </p>
-        <h2 className="text-2xl font-bold text-slate-800">
+        <h2 className="text-2xl font-bold text-medisync-dark">
           Pemeriksaan Pasien
         </h2>
         <p className="text-slate-500 text-sm mt-1">
@@ -161,22 +164,23 @@ export default function PemeriksaanView({
         </div>
       )}
 
-      <div className="grid grid-cols-3 gap-6">
+      <div className="grid min-w-0 grid-cols-1 gap-4 lg:grid-cols-3 lg:gap-6">
         {/* Form */}
-        <div className="col-span-2 bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-          <h3 className="text-lg font-bold text-slate-800 mb-1">
+        <div className="min-w-0 lg:col-span-2 bg-white p-4 sm:p-6 rounded-xl border border-[#dce7ef] shadow-sm">
+          <h3 className="text-lg font-bold text-medisync-dark mb-1">
             Form Pemeriksaan
           </h3>
           <p className="text-xs text-slate-500 mb-6">
-            18 Feb 2025 • dr. Andi Saputra
+            {formatDate(new Date())} · {doctor?.name}
           </p>
 
-          <div className="grid grid-cols-2 gap-4 mb-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 mb-4">
             <div>
-              <label className="block text-xs font-medium text-slate-500 mb-1">
+              <label htmlFor="exam-patient" className="block text-xs font-medium text-slate-500 mb-1">
                 Nama Pasien
               </label>
               <input
+                id="exam-patient"
                 type="text"
                 value={patient.name}
                 readOnly
@@ -184,10 +188,11 @@ export default function PemeriksaanView({
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-500 mb-1">
+              <label htmlFor="exam-rm" className="block text-xs font-medium text-slate-500 mb-1">
                 No. Rekam Medis
               </label>
               <input
+                id="exam-rm"
                 type="text"
                 value={patient.rm_number}
                 readOnly
@@ -198,10 +203,11 @@ export default function PemeriksaanView({
 
           <div className="space-y-4">
             <div>
-              <label className="block text-xs font-medium text-slate-500 mb-1">
+              <label htmlFor="exam-complaints" className="block text-xs font-medium text-slate-500 mb-1">
                 Keluhan
               </label>
               <textarea
+                id="exam-complaints"
                 rows="2"
                 value={keluhan}
                 onChange={(e) => setKeluhan(e.target.value)}
@@ -209,10 +215,11 @@ export default function PemeriksaanView({
               ></textarea>
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-500 mb-1">
+              <label htmlFor="exam-history" className="block text-xs font-medium text-slate-500 mb-1">
                 Riwayat Penyakit
               </label>
               <textarea
+                id="exam-history"
                 rows="2"
                 value={riwayat}
                 onChange={(e) => setRiwayat(e.target.value)}
@@ -220,10 +227,11 @@ export default function PemeriksaanView({
               ></textarea>
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-500 mb-1">
+              <label htmlFor="exam-diagnosis" className="block text-xs font-medium text-slate-500 mb-1">
                 Diagnosis
               </label>
               <input
+                id="exam-diagnosis"
                 type="text"
                 value={diagnosis}
                 onChange={(e) => setDiagnosis(e.target.value)}
@@ -234,13 +242,13 @@ export default function PemeriksaanView({
             {/* MED-4: checkbox pemeriksaan penunjang */}
             <div>
               <label className="block text-xs font-medium text-slate-500 mb-2">
-                Pemeriksaan Penunjang (MED-3/4)
+                Pemeriksaan Penunjang
               </label>
               <div className="grid grid-cols-2 gap-2">
                 {OPSI_PENUNJANG.map((opsi) => (
                   <label
                     key={opsi}
-                    className={`flex items-center gap-2 p-3 rounded-lg border text-sm cursor-pointer transition ${penunjang.includes(opsi) ? "border-blue-500 bg-blue-50 text-blue-700 font-medium" : "border-slate-200 text-slate-600 hover:border-slate-300"}`}
+                    className={`flex items-center gap-2 p-3 rounded-lg border text-sm cursor-pointer transition ${penunjang.includes(opsi) ? "border-blue-500 bg-blue-50 text-blue-700 font-medium" : "border-[#dce7ef] text-slate-600 hover:border-slate-300"}`}
                   >
                     <input
                       type="checkbox"
@@ -256,11 +264,11 @@ export default function PemeriksaanView({
                 <div className="mt-3 flex items-center justify-between p-3 bg-blue-50 border border-blue-200 rounded-lg">
                   <p className="text-xs text-blue-700">
                     {penunjang.length} pemeriksaan diminta • Resep akan{" "}
-                    <b>ditahan otomatis</b> sampai hasil dikonfirmasi (MED-5).
+                    <b>ditahan otomatis</b> sampai hasil dikonfirmasi.
                   </p>
                   <button
                     onClick={() => setShowSurat(true)}
-                    className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-semibold hover:bg-blue-700 flex-shrink-0"
+                    className="px-3 py-1.5 bg-medisync-primary text-white rounded-lg text-xs font-semibold hover:bg-[#0958b5] flex-shrink-0"
                   >
                     Cetak Surat Pengantar
                   </button>
@@ -270,20 +278,20 @@ export default function PemeriksaanView({
 
             <div>
               <label className="block text-xs font-medium text-slate-500 mb-2">
-                Keputusan Perawatan (MED-6)
+                Keputusan Perawatan
               </label>
               <div className="flex gap-4">
                 <button
                   type="button"
                   onClick={() => setRawat("jalan")}
-                  className={`flex-1 py-3 rounded-lg text-sm font-semibold border-2 transition ${rawat === "jalan" ? "border-teal-500 bg-teal-50 text-teal-700" : "border-slate-200 text-slate-500"}`}
+                  className={`flex-1 py-3 rounded-lg text-sm font-semibold border-2 transition ${rawat === "jalan" ? "border-teal-500 bg-teal-50 text-teal-700" : "border-[#dce7ef] text-slate-500"}`}
                 >
                   ● Rawat Jalan
                 </button>
                 <button
                   type="button"
                   onClick={() => setRawat("inap")}
-                  className={`flex-1 py-3 rounded-lg text-sm font-semibold border-2 transition ${rawat === "inap" ? "border-amber-500 bg-amber-50 text-amber-700" : "border-slate-200 text-slate-500"}`}
+                  className={`flex-1 py-3 rounded-lg text-sm font-semibold border-2 transition ${rawat === "inap" ? "border-amber-500 bg-amber-50 text-amber-700" : "border-[#dce7ef] text-slate-500"}`}
                 >
                   ○ Rawat Inap
                 </button>
@@ -301,7 +309,7 @@ export default function PemeriksaanView({
             <button
               onClick={handleLanjut}
               disabled={saving || flowStopped}
-              className="px-6 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 shadow-sm disabled:opacity-50"
+              className="px-6 py-2.5 bg-medisync-primary text-white rounded-lg text-sm font-semibold hover:bg-[#0958b5] shadow-sm disabled:opacity-50"
             >
               {saving
                 ? "Menyimpan..."
@@ -314,8 +322,8 @@ export default function PemeriksaanView({
 
         {/* Sidebar */}
         <div className="space-y-6">
-          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-            <h3 className="text-base font-bold text-slate-800 mb-3">
+          <div className="bg-white p-4 sm:p-6 rounded-xl border border-[#dce7ef] shadow-sm">
+            <h3 className="text-base font-bold text-medisync-dark mb-3">
               Pengingat Keselamatan
             </h3>
             {patient.allergies && (
@@ -345,12 +353,12 @@ export default function PemeriksaanView({
             </p>
           </div>
 
-          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-            <h3 className="text-base font-bold text-slate-800 mb-3">
+          <div className="bg-white p-4 sm:p-6 rounded-xl border border-[#dce7ef] shadow-sm">
+            <h3 className="text-base font-bold text-medisync-dark mb-3">
               Alur Rawat Jalan
             </h3>
             <ol className="space-y-3 text-sm">
-              <li className="font-semibold text-slate-800">
+              <li className="font-semibold text-medisync-dark">
                 1. Pemeriksaan pasien
               </li>
               <li className="text-slate-500">2. Buat resep elektronik</li>
@@ -371,46 +379,46 @@ export default function PemeriksaanView({
 
       {/* MODAL SURAT PENGANTAR (MED-4) */}
       {showSurat && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-8">
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-3 sm:p-8">
           <div className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[85vh] overflow-y-auto p-8">
             <div className="text-center border-b-4 border-double border-slate-800 pb-4 mb-6">
-              <h2 className="text-xl font-bold text-slate-800">
+              <h2 className="text-xl font-bold text-medisync-dark">
                 RUMAH SAKIT MEDIKA UTAMA
               </h2>
               <p className="text-xs text-slate-500 mt-1">
                 Jl. Kesehatan No. 120, Jakarta • Telp (021) 555-0120
               </p>
             </div>
-            <h3 className="text-center font-bold text-slate-800 underline mb-4">
+            <h3 className="text-center font-bold text-medisync-dark underline mb-4">
               SURAT PENGANTAR PEMERIKSAAN PENUNJANG
             </h3>
             <table className="w-full text-sm mb-4">
               <tbody>
                 <tr>
                   <td className="py-1 w-48 text-slate-500">Nama Pasien</td>
-                  <td className="py-1 font-semibold text-slate-800">
+                  <td className="py-1 font-semibold text-medisync-dark">
                     : {patient.name}
                   </td>
                 </tr>
                 <tr>
                   <td className="py-1 text-slate-500">No. Rekam Medis</td>
-                  <td className="py-1 font-mono text-slate-800">
+                  <td className="py-1 font-mono text-medisync-dark">
                     : {patient.rm_number}
                   </td>
                 </tr>
                 <tr>
                   <td className="py-1 text-slate-500">Usia / Jenis Kelamin</td>
-                  <td className="py-1 text-slate-800">
+                  <td className="py-1 text-medisync-dark">
                     : {age} tahun / {patient.gender}
                   </td>
                 </tr>
                 <tr>
                   <td className="py-1 text-slate-500">Diagnosis Kerja</td>
-                  <td className="py-1 text-slate-800">: {diagnosis}</td>
+                  <td className="py-1 text-medisync-dark">: {diagnosis}</td>
                 </tr>
                 <tr>
                   <td className="py-1 text-slate-500">Pemeriksaan Diminta</td>
-                  <td className="py-1 text-slate-800">
+                  <td className="py-1 text-medisync-dark">
                     : {penunjang.join(", ")}
                   </td>
                 </tr>
@@ -421,11 +429,11 @@ export default function PemeriksaanView({
               menunjang penegakan diagnosis. Hasil pemeriksaan harap dikirim
               kembali ke dokter pengirim melalui sistem MediSync.
             </p>
-            <div className="text-right pr-10 text-sm text-slate-800">
+            <div className="text-right pr-10 text-sm text-medisync-dark">
               <p>Dokter Pengirim,</p>
               <div className="h-16"></div>
-              <p className="font-bold">dr. Andi Saputra</p>
-              <p className="text-xs text-slate-500">Dokter Umum • NIP D001</p>
+              <p className="font-bold">{doctor?.name}</p>
+              <p className="text-xs text-slate-500">Dokter Pengirim</p>
             </div>
             <div className="flex justify-end gap-3 mt-8 pt-4 border-t border-slate-100">
               <button
@@ -436,7 +444,7 @@ export default function PemeriksaanView({
               </button>
               <button
                 onClick={cetakSurat}
-                className="px-5 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700"
+                className="px-5 py-2.5 bg-medisync-primary text-white rounded-lg text-sm font-semibold hover:bg-[#0958b5]"
               >
                 Cetak Surat
               </button>

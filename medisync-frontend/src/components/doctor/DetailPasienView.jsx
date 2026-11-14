@@ -1,212 +1,35 @@
+import { useEffect, useState } from "react";
+import api from "../../services/api";
+import { ageInYears, formatDate, statusLabel } from "../../utils/format";
+import icons from "../../assets/figma/icons";
+
 export default function DetailPasienView({ patient, onStartExam }) {
-  if (!patient) {
-    return (
-      <div className="flex items-center justify-center h-64 text-slate-500">
-        Tidak ada data pasien. Klik menu Pasien lalu pilih salah satu pasien.
-      </div>
-    );
-  }
-
-  const age =
-    new Date().getFullYear() - new Date(patient.birth_date).getFullYear();
-
+  const [record, setRecord] = useState(null);
+  const [error, setError] = useState("");
+  const [expanded, setExpanded] = useState(null);
+  useEffect(() => {
+    if (!patient?.id) return;
+    const controller = new AbortController();
+    api.get(`/patients/${patient.id}`, { signal: controller.signal }).then(response => setRecord(response.data.data)).catch(() => {
+      if (!controller.signal.aborted) setError("Riwayat pasien belum dapat dimuat. Silakan coba lagi.");
+    });
+    return () => controller.abort();
+  }, [patient?.id]);
+  if (!patient) return <p className="rounded-xl border border-[#dce7ef] bg-white p-8 text-sm text-slate-500">Pilih pasien dari menu Pasien untuk melihat detail.</p>;
+  const current = record || patient;
+  const history = [...(record?.examinations || [])].sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+  const latest = history[0];
+  const panel = "rounded-xl border border-[#dce7ef] bg-white p-5 sm:p-6";
   return (
-    <div>
-      <div className="flex justify-between items-start mb-6">
-        <div>
-          <p className="text-xs font-bold text-blue-600 tracking-wider uppercase mb-1">
-            PORTAL DOKTER / PASIEN
-          </p>
-          <h2 className="text-2xl font-bold text-slate-800">Detail Pasien</h2>
-          <p className="text-slate-500 text-sm mt-1">
-            {patient.name} • {patient.rm_number} • Kunjungan 18 Feb 2025, 09:30
-            WIB
-          </p>
-        </div>
-        <button
-          onClick={onStartExam}
-          className="bg-blue-600 text-white px-5 py-2.5 rounded-lg text-sm font-semibold hover:bg-blue-700 transition flex items-center gap-2 shadow-sm"
-        >
-          <svg
-            className="w-4 h-4"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 4v16m8-8H4"
-            />
-          </svg>
-          Mulai Pemeriksaan
-        </button>
-      </div>
-
-      <div className="grid grid-cols-3 gap-6">
-        {/* Kolom kiri */}
-        <div className="space-y-6">
-          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-            <h3 className="text-lg font-bold text-slate-800 mb-4">
-              Identitas Pasien
-            </h3>
-            <div className="space-y-3 text-sm">
-              <div>
-                <p className="text-xs text-slate-500">Nama lengkap</p>
-                <p className="font-semibold text-slate-800">{patient.name}</p>
-              </div>
-              <div>
-                <p className="text-xs text-slate-500">No. Rekam Medis</p>
-                <p className="font-semibold text-slate-800 font-mono">
-                  {patient.rm_number}
-                </p>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-xs text-slate-500">Usia</p>
-                  <p className="font-semibold text-slate-800">{age} tahun</p>
-                </div>
-                <div>
-                  <p className="text-xs text-slate-500">Jenis kelamin</p>
-                  <p className="font-semibold text-slate-800">
-                    {patient.gender}
-                  </p>
-                </div>
-              </div>
-              <div>
-                <p className="text-xs text-slate-500">Pelayanan</p>
-                <p className="font-semibold text-slate-800">
-                  Poli Umum • Rawat jalan
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-            <h3 className="text-lg font-bold text-slate-800 mb-4">
-              Riwayat Ringkas
-            </h3>
-            <p className="text-sm text-slate-600 mb-4">
-              Tidak ada penyakit kronis. Tidak minum obat rutin.
-            </p>
-            {patient.allergies && (
-              <div>
-                <p className="text-xs text-slate-500 mb-1">Alergi tercatat</p>
-                <p className="text-sm font-semibold text-slate-800">
-                  {patient.allergies}
-                </p>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Kolom kanan */}
-        <div className="col-span-2 space-y-6">
-          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-            <h3 className="text-lg font-bold text-slate-800 mb-1">
-              Kunjungan Saat Ini
-            </h3>
-            <p className="text-xs text-slate-500 mb-4">
-              18 Feb 2025 • Menunggu pemeriksaan
-            </p>
-
-            {patient.allergies && (
-              <div className="p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3 mb-6">
-                <svg
-                  className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                  />
-                </svg>
-                <p className="text-sm font-bold text-red-800">
-                  Peringatan Alergi: {patient.allergies} — hindari zat pemicu
-                  alergi.
-                </p>
-              </div>
-            )}
-
-            <div>
-              <p className="text-xs font-medium text-slate-500 mb-1">Keluhan</p>
-              <p className="text-sm text-slate-800 bg-slate-50 p-3 rounded-lg border border-slate-100">
-                Demam, batuk kering, nyeri tenggorokan sejak 3 hari.
-              </p>
-            </div>
-          </div>
-
-          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-            <h3 className="text-lg font-bold text-slate-800 mb-1">
-              Kunjungan & Resep Sebelumnya
-            </h3>
-            <p className="text-xs text-slate-500 mb-4">
-              Riwayat rawat jalan • Resep lama, bukan resep aktif hari ini
-            </p>
-            <div className="space-y-4">
-              {[
-                {
-                  date: "10 Feb 2025",
-                  desc: "Kontrol rawat jalan",
-                  code: "RSP-250210-019 • MS-310219 • Terkirim ke Farmasi",
-                },
-                {
-                  date: "21 Jan 2025",
-                  desc: "Konsultasi poli umum",
-                  code: "RSP-250121-011 • MS-291011 • Terkirim ke Farmasi",
-                },
-                {
-                  date: "12 Des 2024",
-                  desc: "Pemeriksaan rawat jalan",
-                  code: "RSP-241212-023 • MS-184023 • Terkirim ke Farmasi",
-                },
-              ].map((v, i) => (
-                <div
-                  key={i}
-                  className="flex justify-between items-center pb-4 border-b border-slate-100 last:border-0 last:pb-0"
-                >
-                  <div>
-                    <p className="text-sm font-semibold text-slate-800">
-                      {v.date} • {v.desc}
-                    </p>
-                    <p className="text-xs text-slate-500 mt-1 font-mono">
-                      {v.code}
-                    </p>
-                  </div>
-                  <button className="text-blue-600 text-sm font-medium hover:underline">
-                    Lihat Detail ›
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
+    <section className="mx-auto max-w-[1440px] space-y-5">
+      <div className="flex flex-wrap items-end justify-between gap-3"><div><p className="mb-2 text-xs font-semibold text-medisync-primary">PORTAL DOKTER / PASIEN</p><h1 className="text-2xl font-semibold tracking-tight">Detail Pasien</h1><p className="mt-1 text-sm text-slate-500">{current.name} · {current.rm_number}</p></div><button type="button" onClick={onStartExam} className="button-primary"><img src={icons.v10} alt="" />Mulai Pemeriksaan</button></div>
+      {error && <p role="alert" className="form-error">{error}</p>}
+      <div className="grid items-start gap-5 lg:grid-cols-[300px_1fr]">
+        <div className="space-y-5"><article className={panel}><h2 className="mb-5 text-lg font-semibold">Identitas Pasien</h2><dl className="grid gap-4 text-sm">{[["Nama lengkap", current.name], ["No. Rekam Medis", current.rm_number], ["Usia", `${ageInYears(current.birth_date)} tahun`], ["Jenis kelamin", current.gender]].map(([label, value]) => <div key={label}><dt className="text-xs text-slate-500">{label}</dt><dd className="mt-1 font-semibold">{value}</dd></div>)}</dl></article><article className={panel}><h2 className="mb-3 text-lg font-semibold">Riwayat Ringkas</h2><p className="text-sm leading-relaxed text-slate-600">{latest?.history || "Riwayat penyakit belum dicatat."}</p><p className="mt-4 text-xs text-slate-500">Alergi tercatat</p><p className="mt-1 text-sm font-semibold">{current.allergies || "Belum ada alergi yang dicatat"}</p></article></div>
+        <div className="space-y-5"><article className={panel}><h2 className="text-lg font-semibold">Pemeriksaan Terakhir</h2><p className="mt-1 text-xs text-slate-500">{latest ? formatDate(latest.created_at) : "Belum ada pemeriksaan tersimpan."}</p>{current.allergies && <p className="mt-4 rounded-lg border border-red-100 bg-red-50 p-3 text-sm text-red-800">Alergi tercatat: <strong>{current.allergies}</strong>. Tinjau sebelum meresepkan obat.</p>}{latest && <dl className="mt-4 grid gap-4 text-sm"><div><dt className="text-xs text-slate-500">Keluhan</dt><dd className="mt-1 leading-relaxed">{latest.complaints}</dd></div><div><dt className="text-xs text-slate-500">Diagnosis</dt><dd className="mt-1">{latest.diagnosis || "—"}</dd></div><div><dt className="text-xs text-slate-500">Dokter</dt><dd className="mt-1">{latest.doctor?.name || "—"}</dd></div></dl>}</article>
+          <article className={panel}><h2 className="text-lg font-semibold">Kunjungan & Resep Sebelumnya</h2><p className="mt-1 text-xs text-slate-500">Riwayat pemeriksaan yang tersimpan untuk pasien ini.</p><div className="mt-4 divide-y divide-slate-100">{history.map(examination => <div key={examination.id} className="py-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-sm font-semibold">{formatDate(examination.created_at)}</p><p className="mt-1 text-xs text-slate-500">{examination.doctor?.name} · {examination.care_decision === "rawat_inap" ? "Rawat inap" : "Rawat jalan"}</p><p className="mt-1 text-xs text-medisync-primary">{examination.prescription?.tracking_code || "Belum ada kode tracking"} · {examination.prescription ? statusLabel(examination.prescription.status) : "Belum ada resep"}</p></div><button type="button" className="min-h-10 text-xs font-semibold text-medisync-primary" aria-expanded={expanded === examination.id} onClick={() => setExpanded(expanded === examination.id ? null : examination.id)}>{expanded === examination.id ? "Tutup detail" : "Lihat detail"}</button></div>{expanded === examination.id && <div className="mt-3 rounded-lg bg-[#f4f8fb] p-4 text-sm"><p className="font-medium">{examination.diagnosis || "Diagnosis belum dicatat"}</p><p className="mt-1 text-slate-600">{examination.complaints}</p>{examination.prescription?.items?.map(item => <p key={item.id} className="mt-3 border-t border-slate-200 pt-3 text-xs leading-relaxed"><strong>{item.drug_name}</strong> · {item.quantity}<br />{item.dosage} · {item.instructions}</p>)}</div>}</div>)}{!history.length && <p className="py-6 text-sm text-slate-500">{record ? "Belum ada riwayat pemeriksaan." : error ? "Riwayat belum tersedia." : "Memuat riwayat..."}</p>}</div></article>
         </div>
       </div>
-
-      <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg flex items-start gap-3">
-        <svg
-          className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
-          />
-        </svg>
-        <p className="text-sm text-blue-700">
-          Riwayat lengkap hanya tersedia untuk dokter. Resep yang sudah disahkan
-          tidak dapat diedit atau dihapus.
-        </p>
-      </div>
-    </div>
+    </section>
   );
 }

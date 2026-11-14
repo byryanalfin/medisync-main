@@ -1,5 +1,7 @@
+import { useFeedback } from "../../feedbackContext";
 import { useState, useEffect } from "react";
 import api from "../../services/api";
+import { ageInYears, formatDate } from "../../utils/format";
 
 const emptyForm = {
   rm_number: "",
@@ -10,7 +12,9 @@ const emptyForm = {
 };
 
 export default function DaftarPasienView({ onDetail, onPeriksa }) {
+  const showFeedback = useFeedback();
   const [patients, setPatients] = useState([]);
+  const [loadError, setLoadError] = useState("");
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [showModal, setShowModal] = useState(false);
@@ -20,16 +24,11 @@ export default function DaftarPasienView({ onDetail, onPeriksa }) {
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState(emptyForm);
 
-  const fetchPatients = async () => {
-    try {
-      const response = await api.get("/patients");
-      setPatients(response.data.data);
-    } catch (error) {
-      console.error("Gagal ambil data pasien:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  const fetchPatients = () =>
+    api.get("/patients")
+      .then((response) => { setPatients(response.data.data); setLoadError(""); })
+      .catch(() => setLoadError("Data pasien belum dapat dimuat. Periksa koneksi dan muat ulang halaman."))
+      .finally(() => setLoading(false));
 
   useEffect(() => {
     fetchPatients();
@@ -65,10 +64,10 @@ export default function DaftarPasienView({ onDetail, onPeriksa }) {
       };
       if (modalMode === "edit") {
         await api.put(`/patients/${editingId}`, payload);
-        alert("Perubahan berhasil disimpan!");
+        showFeedback("Data pasien telah diperbarui.", "Perubahan tersimpan");
       } else {
         await api.post("/patients", payload);
-        alert("Pasien berhasil ditambahkan!");
+        showFeedback("Data pasien telah ditambahkan.", "Pasien ditambahkan");
       }
       setShowModal(false);
       setForm(emptyForm);
@@ -77,7 +76,7 @@ export default function DaftarPasienView({ onDetail, onPeriksa }) {
       const errMsg = error.response?.data?.errors
         ? Object.values(error.response.data.errors)[0][0]
         : error.response?.data?.message || error.message;
-      alert(
+      showFeedback(
         (modalMode === "edit"
           ? "Gagal menyimpan perubahan: "
           : "Gagal menambah pasien: ") + errMsg,
@@ -91,11 +90,11 @@ export default function DaftarPasienView({ onDetail, onPeriksa }) {
     setSaving(true);
     try {
       await api.delete(`/patients/${deletingPatient.id}`);
-      alert("Pasien berhasil dihapus.");
+      showFeedback("Data pasien telah dihapus.", "Pasien dihapus");
       setDeletingPatient(null);
       fetchPatients();
     } catch (error) {
-      alert(
+      showFeedback(
         "Gagal menghapus: " + (error.response?.data?.message || error.message),
       );
       setDeletingPatient(null);
@@ -120,30 +119,30 @@ export default function DaftarPasienView({ onDetail, onPeriksa }) {
 
   return (
     <div>
+      {loadError && <p role="alert" className="form-error mb-5">{loadError}</p>}
       <div className="mb-6">
-        <p className="text-xs font-bold text-blue-600 tracking-wider uppercase mb-1">
+        <p className="text-xs font-bold text-medisync-primary tracking-wider uppercase mb-1">
           PORTAL DOKTER / PASIEN
         </p>
-        <h2 className="text-2xl font-bold text-slate-800">Daftar Pasien</h2>
+        <h2 className="text-2xl font-bold text-medisync-dark">Daftar Pasien</h2>
         <p className="text-slate-500 text-sm mt-1">
           Temukan pasien dan lanjutkan pemeriksaan rawat jalan hari ini.
         </p>
       </div>
 
-      <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-        <div className="mb-6 flex items-center justify-between">
+      <div className="min-w-0 bg-white rounded-xl border border-[#dce7ef] shadow-sm p-4 sm:p-6">
+        <div className="mb-6 flex flex-wrap gap-4 items-center justify-between">
           <div>
-            <h3 className="text-lg font-bold text-slate-800">
-              Pasien Kunjungan Hari Ini
+            <h3 className="text-lg font-bold text-medisync-dark">
+              Pasien Terdaftar
             </h3>
             <p className="text-xs text-slate-500 mt-1">
-              Tahap sebelum pemeriksaan • {filteredPatients.length} pasien
-              terjadwal
+              {filteredPatients.length} pasien ditemukan
             </p>
           </div>
           <button
             onClick={openAdd}
-            className="px-4 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition flex items-center gap-2 shadow-sm"
+            className="px-4 py-2.5 bg-medisync-primary text-white rounded-lg text-sm font-semibold hover:bg-[#0958b5] transition flex items-center gap-2 shadow-sm"
           >
             <svg
               className="w-4 h-4"
@@ -162,7 +161,7 @@ export default function DaftarPasienView({ onDetail, onPeriksa }) {
           </button>
         </div>
 
-        <div className="grid grid-cols-3 gap-4 mb-6">
+        <div className="grid grid-cols-1 gap-4 mb-6">
           <div>
             <label className="block text-xs font-medium text-slate-500 mb-1">
               Pencarian
@@ -175,37 +174,19 @@ export default function DaftarPasienView({ onDetail, onPeriksa }) {
               className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
             />
           </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-500 mb-1">
-              Status
-            </label>
-            <select className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none bg-white">
-              <option>Semua pemeriksaan</option>
-              <option>Menunggu Pemeriksaan</option>
-              <option>Selesai Pemeriksaan</option>
-            </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-500 mb-1">
-              Tanggal
-            </label>
-            <input
-              type="date"
-              defaultValue="2025-02-18"
-              className="w-full px-4 py-2.5 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-            />
-          </div>
+
         </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse">
+        <div className="divide-y divide-slate-100 md:hidden">{filteredPatients.map(patient => <article key={patient.id} className="space-y-3 py-4"><div><h3 className="text-sm font-semibold">{patient.name}</h3><p className="mt-1 break-all text-xs text-slate-500">{patient.rm_number}</p><p className="mt-1 text-xs text-slate-500">{patient.gender} · {ageInYears(patient.birth_date)} tahun</p></div><div className="flex flex-wrap gap-2"><button type="button" className="button-secondary" onClick={() => onDetail(patient)}>Detail Pasien</button><button type="button" className="button-primary" onClick={() => onPeriksa(patient)}>Periksa</button><button type="button" className="button-secondary" onClick={() => openEdit(patient)}>Edit</button></div></article>)}{!filteredPatients.length && <p className="py-6 text-sm text-slate-500">Tidak ada pasien ditemukan.</p>}</div>
+        <div className="hidden max-w-full overflow-x-auto md:block">
+          <table className="w-full min-w-[760px] text-left border-collapse">
             <thead>
-              <tr className="border-b border-slate-200 text-xs font-medium text-slate-500 uppercase tracking-wider">
+              <tr className="border-b border-[#dce7ef] text-xs font-medium text-slate-500 uppercase tracking-wider">
                 <th className="py-3 px-2">No</th>
                 <th className="py-3 px-2">Nama Pasien</th>
                 <th className="py-3 px-2">No. Rekam Medis</th>
-                <th className="py-3 px-2">Kunjungan</th>
-                <th className="py-3 px-2">Waktu</th>
+                <th className="py-3 px-2">Identitas</th>
+                <th className="py-3 px-2">Terdaftar</th>
                 <th className="py-3 px-2">Pemeriksaan</th>
                 <th className="py-3 px-2 text-right">Aksi</th>
               </tr>
@@ -219,7 +200,7 @@ export default function DaftarPasienView({ onDetail, onPeriksa }) {
                   <td className="py-4 px-2 text-slate-500">
                     {String(idx + 1).padStart(2, "0")}
                   </td>
-                  <td className="py-4 px-2 font-semibold text-slate-800">
+                  <td className="py-4 px-2 font-semibold text-medisync-dark">
                     {p.name}
                   </td>
                   <td className="py-4 px-2 text-slate-600 font-mono text-xs">
@@ -227,32 +208,31 @@ export default function DaftarPasienView({ onDetail, onPeriksa }) {
                   </td>
                   <td className="py-4 px-2 text-slate-600">
                     {p.gender} ·{" "}
-                    {new Date().getFullYear() -
-                      new Date(p.birth_date).getFullYear()}{" "}
+                    {ageInYears(p.birth_date)}{" "}
                     tahun
                   </td>
                   <td className="py-4 px-2 text-slate-600">
-                    09:{30 + idx * 5} WIB
+                    {formatDate(p.created_at)}
                   </td>
                   <td className="py-4 px-2">
                     <span
-                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${idx < 2 ? "bg-blue-100 text-blue-700" : "bg-teal-100 text-teal-700"}`}
+                      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${p.examinations_count ? "bg-teal-100 text-teal-700" : "bg-slate-100 text-slate-600"}`}
                     >
                       <span className="w-1.5 h-1.5 rounded-full bg-current"></span>
-                      {idx < 2 ? "Menunggu Pemeriksaan" : "Selesai Pemeriksaan"}
+                      {p.examinations_count ? `${p.examinations_count} pemeriksaan` : "Belum diperiksa"}
                     </span>
                   </td>
                   <td className="py-4 px-2 text-right">
                     <div className="flex justify-end items-center gap-3">
                       <button
                         onClick={() => onDetail && onDetail(p)}
-                        className="text-blue-600 font-medium hover:underline text-xs cursor-pointer"
+                        className="text-medisync-primary font-medium hover:underline text-xs cursor-pointer"
                       >
                         Detail Pasien
                       </button>
                       <button
                         onClick={() => onPeriksa && onPeriksa(p)}
-                        className="text-blue-600 font-medium hover:underline text-xs cursor-pointer"
+                        className="text-medisync-primary font-medium hover:underline text-xs cursor-pointer"
                       >
                         Periksa ›
                       </button>
@@ -302,31 +282,12 @@ export default function DaftarPasienView({ onDetail, onPeriksa }) {
           </table>
         </div>
 
-        <div className="mt-6 flex items-center justify-between">
-          <p className="text-sm text-slate-500">
-            Menampilkan 1–{filteredPatients.length} dari{" "}
-            {filteredPatients.length} data
-          </p>
-          <div className="flex items-center gap-2">
-            <button className="px-3 py-1.5 text-sm text-slate-500 hover:text-blue-600">
-              ‹ Sebelumnya
-            </button>
-            <button className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm font-medium">
-              1
-            </button>
-            <button className="px-3 py-1.5 text-sm text-slate-500 hover:text-blue-600">
-              2
-            </button>
-            <button className="px-3 py-1.5 text-sm text-blue-600 hover:text-blue-700">
-              Berikutnya ›
-            </button>
-          </div>
-        </div>
+        <p className="mt-5 text-xs text-slate-500">Menampilkan {filteredPatients.length} pasien sesuai pencarian.</p>
       </div>
 
       <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg flex items-start gap-3">
         <svg
-          className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5"
+          className="w-5 h-5 text-medisync-primary flex-shrink-0 mt-0.5"
           fill="none"
           stroke="currentColor"
           viewBox="0 0 24 24"
@@ -347,8 +308,8 @@ export default function DaftarPasienView({ onDetail, onPeriksa }) {
       {/* === MODAL TAMBAH / EDIT PASIEN === */}
       {showModal && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg p-6">
-            <h3 className="text-lg font-bold text-slate-800 mb-1">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[calc(100dvh-2rem)] overflow-y-auto p-6">
+            <h3 className="text-lg font-bold text-medisync-dark mb-1">
               {modalMode === "edit" ? "Edit Data Pasien" : "Tambah Pasien Baru"}
             </h3>
             <p className="text-xs text-slate-500 mb-4">
@@ -358,7 +319,7 @@ export default function DaftarPasienView({ onDetail, onPeriksa }) {
             </p>
 
             <form onSubmit={handleSave} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label className="block text-xs font-medium text-slate-500 mb-1">
                     No. Rekam Medis
@@ -389,7 +350,7 @@ export default function DaftarPasienView({ onDetail, onPeriksa }) {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label className="block text-xs font-medium text-slate-500 mb-1">
                     Tanggal Lahir
@@ -447,7 +408,7 @@ export default function DaftarPasienView({ onDetail, onPeriksa }) {
                 <button
                   type="submit"
                   disabled={saving}
-                  className="px-5 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 disabled:opacity-50"
+                  className="px-5 py-2.5 bg-medisync-primary text-white rounded-lg text-sm font-semibold hover:bg-[#0958b5] disabled:opacity-50"
                 >
                   {saving
                     ? "Menyimpan..."
@@ -464,7 +425,7 @@ export default function DaftarPasienView({ onDetail, onPeriksa }) {
       {/* === MODAL KONFIRMASI HAPUS === */}
       {deletingPatient && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-xl shadow-xl w-full max-w-md p-6">
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-md max-h-[calc(100dvh-2rem)] overflow-y-auto p-6">
             <div className="flex items-center gap-3 mb-4">
               <div className="w-10 h-10 bg-red-100 rounded-full flex items-center justify-center flex-shrink-0">
                 <svg
@@ -482,7 +443,7 @@ export default function DaftarPasienView({ onDetail, onPeriksa }) {
                 </svg>
               </div>
               <div>
-                <h3 className="text-lg font-bold text-slate-800">
+                <h3 className="text-lg font-bold text-medisync-dark">
                   Hapus Pasien?
                 </h3>
                 <p className="text-xs text-slate-500">
