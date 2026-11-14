@@ -13,11 +13,12 @@ class AuthController extends Controller
     {
         $request->validate([
             'email' => 'required|email',
-            'password' => 'required',
+            'password' => 'required|string',
         ]);
+
         $user = User::where('email', $request->email)->first();
 
-        if (!$user || !Hash::check($request->password, $user->password)) {
+        if (! $user || ! Hash::check($request->password, $user->password)) {
             return response()->json([
                 'success' => false,
                 'message' => 'Email atau password salah',
@@ -39,12 +40,18 @@ class AuthController extends Controller
         ]);
     }
 
+    public function me(Request $request)
+    {
+        return response()->json(['success' => true, 'user' => $request->user()->only(['id', 'name', 'email', 'role'])]);
+    }
+
     public function logout(Request $request)
     {
-        $request->user()->currentAccessToken()->delete();
+        $request->user()->currentAccessToken()?->delete();
+
         return response()->json([
             'success' => true,
-            'message' => 'Logout berhasil'
+            'message' => 'Logout berhasil',
         ]);
     }
 }

@@ -1,333 +1,72 @@
-import { useState, useEffect } from "react";
+import { useEffect, useRef, useState } from "react";
 import api from "../../services/api";
+import DrugAutocomplete from "./DrugAutocomplete";
+import icons from "../../assets/figma/icons";
 
+const blankDrug = () => ({ nama: "", jumlah: "", dosis: "", aturan: "", catatan: "" });
 export default function ResepElektronikView({ patient, onSahkan }) {
-  const [obatList, setObatList] = useState([
-    {
-      nama: "Paracetamol 500 mg",
-      jumlah: "10 tablet",
-      dosis: "500 mg",
-      aturan: "3 × 1 sesudah makan",
-      catatan: "Jika demam atau nyeri",
-    },
-    {
-      nama: "Cetirizine 10 mg",
-      jumlah: "5 tablet",
-      dosis: "10 mg",
-      aturan: "1 × 1 malam hari",
-      catatan: "Dapat menyebabkan kantuk",
-    },
-  ]);
+  const [items, setItems] = useState([blankDrug()]);
   const [examination, setExamination] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-
+  const [error, setError] = useState("");
+  const confirmation = useRef(null);
   useEffect(() => {
     const id = localStorage.getItem("currentExaminationId");
-    if (id) {
-      api
-        .get(`/examinations/${id}`)
-        .then((res) => setExamination(res.data.data))
-        .catch(() => {});
+    const controller = new AbortController();
+    async function load() {
+      try {
+        if (!id) throw new Error("Simpan pemeriksaan pasien terlebih dahulu sebelum membuat resep.");
+        const response = await api.get(`/examinations/${id}`, { signal: controller.signal });
+        const data = response.data.data;
+        if (data.patient_id !== patient?.id) throw new Error("Pemeriksaan tidak sesuai dengan pasien yang dipilih. Mulai pemeriksaan baru.");
+        if (data.care_decision !== "rawat_jalan") throw new Error("Resep rawat jalan tidak tersedia untuk pemeriksaan rawat inap.");
+        if (data.prescription) throw new Error("Pemeriksaan ini sudah memiliki resep. Buka menu Riwayat untuk melihat resep tersebut.");
+        if (!controller.signal.aborted) setExamination(data);
+      } catch (requestError) {
+        if (!controller.signal.aborted) setError(requestError.response?.data?.message || requestError.message);
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
     }
-  }, []);
-
-  // MED-5: ada pemeriksaan penunjang → resep otomatis on_hold
-  const akanDitahan =
-    examination &&
-    Array.isArray(examination.supporting_exams) &&
-    examination.supporting_exams.length > 0;
-
-  const handleSahkan = async () => {
-    const examinationId = localStorage.getItem("currentExaminationId");
-    if (!examinationId || !examination) {
-      alert(
-        "Silakan lakukan pemeriksaan terlebih dahulu sebelum membuat resep.",
-      );
-      return;
-    }
+    load();
+    return () => controller.abort();
+  }, [patient?.id]);
+  const held = Boolean(examination?.supporting_exams?.length);
+  function change(index, fields) { setItems(previous => previous.map((item, i) => i === index ? { ...item, ...fields } : item)); }
+  async function save() {
+    if (saving || !examination) return;
     setSaving(true);
+    setError("");
     try {
-      const user = JSON.parse(localStorage.getItem("user") || "{}");
-      const status = akanDitahan ? "on_hold" : "approved";
-      const holdReason = akanDitahan
-        ? "Menunggu hasil pemeriksaan penunjang: " +
-          examination.supporting_exams.join(", ")
-        : null;
-
-      const res = await api.post("/prescriptions", {
+      const response = await api.post("/prescriptions", {
         examination_id: examination.id,
-        doctor_id: user.id || 1,
-        status,
-        hold_reason: holdReason,
-        items: obatList
-          .filter((o) => o.nama.trim())
-          .map((o) => ({
-            drug_name: o.nama,
-            quantity: o.jumlah,
-            dosage: o.dosis,
-            instructions: o.aturan,
-            notes: o.catatan,
-          })),
+        status: held ? "on_hold" : "approved",
+        hold_reason: held ? "Menunggu hasil pemeriksaan penunjang: " + examination.supporting_exams.join(", ") : null,
+        items: items.map(item => ({ drug_name: item.nama.trim(), quantity: item.jumlah.trim(), dosage: item.dosis.trim(), instructions: item.aturan.trim(), notes: item.catatan.trim() || null })),
       });
-
-      const data = res.data.data;
-      localStorage.setItem(
-        "lastPrescription",
-        JSON.stringify({
-          id: data.prescription.id,
-          status: data.prescription.status,
-          tracking_code: data.tracking_code,
-          hold_reason: holdReason,
-          items: obatList.filter((o) => o.nama.trim()),
-          patient_name: patient?.name,
-          rm_number: patient?.rm_number,
-        }),
-      );
-      if (data.tracking_code)
-        localStorage.setItem("trackingCode", data.tracking_code);
+      localStorage.setItem("lastPrescription", JSON.stringify({ id: response.data.data.prescription.id }));
+      confirmation.current.close();
       onSahkan();
-    } catch (error) {
-      alert(
-        "Gagal menyimpan resep: " +
-          (error.response?.data?.message || error.message),
-      );
+    } catch (requestError) {
+      setError(Object.values(requestError.response?.data?.errors || {})[0]?.[0] || requestError.response?.data?.message || "Resep belum tersimpan. Periksa koneksi dan coba lagi.");
+      confirmation.current.close();
     } finally {
       setSaving(false);
     }
-  };
-
-  if (!patient)
-    return (
-      <div className="flex items-center justify-center h-64 text-slate-500">
-        Tidak ada data pasien
+  }
+  if (!patient) return <p className="p-8 text-sm text-slate-500">Pilih pasien dan simpan pemeriksaan terlebih dahulu.</p>;
+  return <section className="mx-auto max-w-[1440px] space-y-5">
+    <div><p className="mb-2 text-xs font-semibold text-medisync-primary">PORTAL DOKTER / RESEP</p><h1 className="text-2xl font-semibold tracking-tight">Resep Elektronik</h1><p className="mt-1 text-sm text-slate-500">Tahap 2 · {loading ? "Memuat pemeriksaan..." : examination ? `Pemeriksaan tersimpan · ${examination.diagnosis}` : "Pemeriksaan belum tersedia"}</p></div>
+    {error && <p role="alert" className="form-error">{error}</p>}
+    <form className="grid items-start gap-5 xl:grid-cols-[3fr_2fr]" onSubmit={event => { event.preventDefault(); if (examination && !saving) confirmation.current.showModal(); }}>
+      <article className="rounded-xl border border-[#dce7ef] bg-white p-5 sm:p-6"><h2 className="text-lg font-semibold">Form Resep</h2><p className="mb-5 mt-1 text-xs text-slate-500">Isi obat, jumlah, dosis, dan aturan pakai sesuai pemeriksaan.</p><fieldset disabled={saving || !examination} className="space-y-5"><legend className="sr-only">Obat yang diresepkan</legend>{items.map((item, index) => <div key={index} className="space-y-4 border-b border-slate-100 pb-5"><div className="flex items-center justify-between"><h3 className="text-xs font-semibold text-slate-500">OBAT {index + 1}</h3>{items.length > 1 && <button type="button" onClick={() => setItems(previous => previous.filter((_, i) => i !== index))} className="min-h-9 text-xs text-red-700">Hapus obat {index + 1}</button>}</div><div><label htmlFor={`drug-${index}`} className="mb-1.5 block text-xs font-medium text-slate-600">Nama Obat</label><DrugAutocomplete inputId={`drug-${index}`} value={item.nama} onChange={fields => change(index, fields)} /></div><div className="grid gap-3 sm:grid-cols-2">{[["jumlah", "Jumlah"], ["dosis", "Dosis"]].map(([key, label]) => <label key={key} className="block text-xs font-medium text-slate-600" htmlFor={`${key}-${index}`}>{label}<input id={`${key}-${index}`} type="text" maxLength={key === "jumlah" ? 100 : 255} required value={item[key]} onChange={event => change(index, { [key]: event.target.value })} className="mt-1.5 min-h-11 w-full rounded-lg border border-[#cfdae4] px-3 text-sm font-normal" /></label>)}</div><label className="block text-xs font-medium text-slate-600" htmlFor={`aturan-${index}`}>Aturan Pakai<input id={`aturan-${index}`} type="text" maxLength={1000} required value={item.aturan} onChange={event => change(index, { aturan: event.target.value })} className="mt-1.5 min-h-11 w-full rounded-lg border border-[#cfdae4] px-3 text-sm font-normal" /></label><label className="block text-xs font-medium text-slate-600" htmlFor={`catatan-${index}`}>Catatan <span className="font-normal">(opsional)</span><input id={`catatan-${index}`} type="text" maxLength={2000} value={item.catatan} onChange={event => change(index, { catatan: event.target.value })} className="mt-1.5 min-h-11 w-full rounded-lg border border-[#cfdae4] px-3 text-sm font-normal" /></label></div>)}<button type="button" className="button-secondary w-full" disabled={items.length >= 50} onClick={() => setItems(previous => [...previous, blankDrug()])}>+ Tambah obat</button></fieldset></article>
+      <div className="space-y-5"><article className="rounded-xl border border-[#dce7ef] bg-white p-5 sm:p-6"><h2 className="mb-4 text-lg font-semibold">Informasi Pasien</h2><dl className="grid gap-4 text-sm sm:grid-cols-2"><div><dt className="text-xs text-slate-500">Nama pasien</dt><dd className="mt-1 font-semibold">{patient.name}</dd></div><div><dt className="text-xs text-slate-500">No. Rekam Medis</dt><dd className="mt-1 font-semibold">{patient.rm_number}</dd></div></dl>{patient.allergies && <p className="mt-4 rounded-lg bg-red-50 p-3 text-xs leading-relaxed text-red-800">Alergi tercatat: <strong>{patient.allergies}</strong>. Tinjau pemilihan obat sebelum mengesahkan resep.</p>}</article>
+        {held && <aside className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900"><h2 className="font-semibold">Menunggu hasil pemeriksaan penunjang</h2><p className="mt-2 text-xs leading-relaxed">{examination.supporting_exams.join(", ")}. Resep akan ditahan; kode tracking diterbitkan setelah dokter mengonfirmasi hasil.</p></aside>}
+        <article className="rounded-xl border border-[#dce7ef] bg-white p-5 sm:p-6"><h2 className="text-lg font-semibold">Pengesahan Resep</h2><p className="mb-5 mt-2 text-sm leading-relaxed text-slate-600">Tinjau seluruh obat, dosis, dan aturan pakai. Resep yang telah disahkan dikirim ke farmasi dan tidak dapat diubah.</p><button type="submit" className="button-primary w-full" disabled={saving || !examination}>Tinjau & sahkan resep</button></article>
+        <aside className="flex items-start gap-3 rounded-lg bg-[#eaf3ff] p-4 text-xs leading-relaxed"><img src={icons.v61} alt="" /><p>Kode tracking dibuat otomatis setelah resep disahkan. Berikan kode kepada pasien untuk memantau pelayanan obat.</p></aside>
       </div>
-    );
-
-  return (
-    <div>
-      <div className="mb-6">
-        <p className="text-xs font-bold text-blue-600 tracking-wider uppercase mb-1">
-          PORTAL DOKTER / RESEP
-        </p>
-        <h2 className="text-2xl font-bold text-slate-800">Resep Elektronik</h2>
-        <p className="text-slate-500 text-sm mt-1">
-          Tahap 2: Draf resep rawat jalan • Pemeriksaan telah disimpan •
-          Diagnosis {examination?.diagnosis || "-"}
-        </p>
-      </div>
-
-      <div className="grid grid-cols-3 gap-6">
-        <div className="col-span-2 bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-          <h3 className="text-lg font-bold text-slate-800 mb-1">Form Resep</h3>
-          <p className="text-xs text-slate-500 mb-6">
-            Lengkapi jumlah, dosis, aturan pakai, dan catatan obat.
-          </p>
-
-          <div className="space-y-6">
-            {obatList.map((obat, idx) => (
-              <div
-                key={idx}
-                className="p-4 bg-slate-50 rounded-lg border border-slate-200 space-y-4"
-              >
-                <div className="grid grid-cols-3 gap-4">
-                  <div>
-                    <label className="block text-xs font-medium text-slate-500 mb-1">
-                      Nama Obat
-                    </label>
-                    <input
-                      type="text"
-                      value={obat.nama}
-                      onChange={(e) => {
-                        const l = [...obatList];
-                        l[idx].nama = e.target.value;
-                        setObatList(l);
-                      }}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-500 mb-1">
-                      Jumlah
-                    </label>
-                    <input
-                      type="text"
-                      value={obat.jumlah}
-                      onChange={(e) => {
-                        const l = [...obatList];
-                        l[idx].jumlah = e.target.value;
-                        setObatList(l);
-                      }}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-500 mb-1">
-                      Dosis
-                    </label>
-                    <input
-                      type="text"
-                      value={obat.dosis}
-                      onChange={(e) => {
-                        const l = [...obatList];
-                        l[idx].dosis = e.target.value;
-                        setObatList(l);
-                      }}
-                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                    />
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-500 mb-1">
-                    Aturan Pakai
-                  </label>
-                  <input
-                    type="text"
-                    value={obat.aturan}
-                    onChange={(e) => {
-                      const l = [...obatList];
-                      l[idx].aturan = e.target.value;
-                      setObatList(l);
-                    }}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-500 mb-1">
-                    Catatan
-                  </label>
-                  <input
-                    type="text"
-                    value={obat.catatan}
-                    onChange={(e) => {
-                      const l = [...obatList];
-                      l[idx].catatan = e.target.value;
-                      setObatList(l);
-                    }}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-
-          <button
-            onClick={() =>
-              setObatList([
-                ...obatList,
-                { nama: "", jumlah: "", dosis: "", aturan: "", catatan: "" },
-              ])
-            }
-            className="w-full mt-6 py-3 border-2 border-dashed border-slate-300 rounded-lg text-sm font-medium text-slate-600 hover:border-blue-500 hover:text-blue-600 transition flex items-center justify-center gap-2"
-          >
-            <svg
-              className="w-4 h-4"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M12 4v16m8-8H4"
-              />
-            </svg>
-            Tambah Obat Lain
-          </button>
-
-          <div className="flex justify-end mt-8 pt-6 border-t border-slate-100">
-            <button
-              onClick={handleSahkan}
-              disabled={saving}
-              className="px-8 py-2.5 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 shadow-sm disabled:opacity-50"
-            >
-              {saving
-                ? "Menyimpan..."
-                : akanDitahan
-                  ? "Sahkan Resep (Ditahan Otomatis)"
-                  : "Ajukan / Simpan Resep"}
-            </button>
-          </div>
-        </div>
-
-        <div className="space-y-6">
-          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-            <h3 className="text-base font-bold text-slate-800 mb-4">
-              Informasi Pasien
-            </h3>
-            <div className="grid grid-cols-2 gap-4 text-sm mb-4">
-              <div>
-                <p className="text-xs text-slate-500">Nama Pasien</p>
-                <p className="font-semibold text-slate-800">{patient.name}</p>
-              </div>
-              <div>
-                <p className="text-xs text-slate-500">No. Rekam Medis</p>
-                <p className="font-semibold text-slate-800 font-mono">
-                  {patient.rm_number}
-                </p>
-              </div>
-            </div>
-            {patient.allergies && (
-              <div className="p-3 bg-red-50 border border-red-100 rounded-lg flex items-start gap-2">
-                <svg
-                  className="w-4 h-4 text-red-600 flex-shrink-0 mt-0.5"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                  />
-                </svg>
-                <p className="text-xs text-red-700 font-medium">
-                  Peringatan Alergi: {patient.allergies} — hindari zat pemicu
-                  alergi.
-                </p>
-              </div>
-            )}
-          </div>
-
-          {/* MED-5: info hold otomatis */}
-          {akanDitahan && (
-            <div className="p-4 bg-amber-50 border border-amber-300 rounded-xl">
-              <h4 className="text-sm font-bold text-amber-800 mb-1">
-                Resep Akan Ditahan Otomatis
-              </h4>
-              <p className="text-xs text-amber-700">
-                Pemeriksaan penunjang diminta:{" "}
-                <b>{examination.supporting_exams.join(", ")}</b>. Resep
-                tersimpan berstatus
-                <b> on_hold</b> dan kode tracking baru terbit setelah dokter
-                mengkonfirmasi hasil.
-              </p>
-            </div>
-          )}
-
-          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-            <h3 className="text-base font-bold text-slate-800 mb-3">
-              Konfirmasi Pengesahan Resep
-            </h3>
-            <p className="text-xs text-slate-600 mb-4">
-              Resep yang telah disahkan akan dikirim ke instalasi farmasi dan
-              tidak dapat dihapus.
-            </p>
-            <button
-              onClick={handleSahkan}
-              disabled={saving}
-              className={`w-full py-3 text-white rounded-lg text-sm font-semibold transition shadow-sm disabled:opacity-50 ${akanDitahan ? "bg-amber-600 hover:bg-amber-700" : "bg-blue-600 hover:bg-blue-700"}`}
-            >
-              {saving
-                ? "Menyimpan..."
-                : akanDitahan
-                  ? "SAHKAN & TAHAN RESEP"
-                  : "SAHKAN RESEP"}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+    </form>
+    <dialog ref={confirmation} aria-labelledby="prescription-confirm-title" className="w-[calc(100%-2rem)] max-w-lg rounded-xl border border-[#dce7ef] p-6 text-medisync-dark backdrop:bg-slate-900/40"><h2 id="prescription-confirm-title" className="text-lg font-semibold">Konfirmasi pengesahan resep</h2><p className="mt-3 text-sm leading-relaxed text-slate-600">Sahkan {items.length} jenis obat untuk <strong>{patient.name}</strong>? Pastikan identitas pasien, alergi, jumlah, dosis, dan aturan pakai sudah sesuai.</p><div className="mt-5 flex flex-wrap justify-end gap-3"><button type="button" autoFocus className="button-secondary" disabled={saving} onClick={() => confirmation.current.close()}>Tinjau kembali</button><button type="button" className="button-primary" disabled={saving} onClick={save}>{saving ? "Menyimpan..." : held ? "Sahkan & tahan resep" : "Sahkan resep"}</button></div></dialog>
+  </section>;
 }

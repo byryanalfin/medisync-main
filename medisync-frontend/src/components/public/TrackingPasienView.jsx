@@ -1,402 +1,160 @@
-import { useState, useEffect, Fragment } from "react";
+import { useEffect, useRef, useState } from "react";
 import api from "../../services/api";
+import icons from "../../assets/figma/icons";
+import trackingPill from "../../assets/figma-tracking-pill.svg";
+import trackingSearch from "../../assets/figma-tracking-search.svg";
+import trackingPrivacy from "../../assets/figma-tracking-privacy.svg";
 
 const STAGES = [
-  "Menunggu",
-  "Diterima",
-  "Sedang Diracik",
-  "Siap Diserahkan",
-  "Diserahkan",
+  { id: "approved", label: "Menunggu", description: "Resep menunggu verifikasi oleh instalasi farmasi." },
+  { id: "accepted", label: "Diterima", description: "Resep telah diterima dan sedang ditinjau oleh petugas farmasi." },
+  { id: "preparing", label: "Sedang Diracik", description: "Obat Anda sedang diproses oleh instalasi farmasi." },
+  { id: "ready", label: "Siap Diserahkan", description: "Obat Anda siap diambil di instalasi farmasi." },
+  { id: "picked_up", label: "Diserahkan", description: "Obat telah diserahkan oleh instalasi farmasi." },
 ];
+const formatDate = value => value ? new Intl.DateTimeFormat("id-ID", { dateStyle: "medium", timeStyle: "short", timeZone: "Asia/Jakarta" }).format(new Date(value)) + " WIB" : "—";
+const panel = "rounded-xl border border-[#dce7ef] bg-white";
 
-const stageInfo = (status) => {
-  if (status === "approved")
-    return {
-      stage: 2,
-      title: "Sedang Diracik",
-      desc: "Obat Anda sedang diproses oleh instalasi farmasi.",
-    };
-  if (status === "on_hold")
-    return {
-      stage: 0,
-      title: "Menunggu Konfirmasi",
-      desc: "Resep ditahan sementara menunggu konfirmasi hasil pemeriksaan penunjang.",
-    };
-  return {
-    stage: 0,
-    title: "Menunggu",
-    desc: "Resep menunggu verifikasi oleh instalasi farmasi.",
-  };
-};
-
-const formatWaktu = (d) => {
-  const tanggal = d.toLocaleDateString("id-ID", {
-    day: "numeric",
-    month: "short",
-    year: "numeric",
-  });
-  const jam = d.toLocaleTimeString("id-ID", {
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  });
-  return `${tanggal} ${jam} WIB`;
-};
-
-export default function TrackingPasienView({ onBackToLogin }) {
-  const [code, setCode] = useState("");
+export default function TrackingPasienView({ onBackToLogin, backLabel = "Kembali ke login", initialCode = "" }) {
+  const [code, setCode] = useState(initialCode);
   const [trackedCode, setTrackedCode] = useState("");
   const [result, setResult] = useState(null);
   const [error, setError] = useState("");
+  const [refreshError, setRefreshError] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [lastUpdate, setLastUpdate] = useState(null);
+  const [lastChecked, setLastChecked] = useState(null);
+  const [copied, setCopied] = useState(false);
+  const requestRef = useRef(null);
 
-  const doTrack = async (e) => {
-    e?.preventDefault();
-    const c = code.trim().toUpperCase();
-    if (!c) return;
+  useEffect(() => () => requestRef.current?.abort(), []);
+
+  async function doTrack(event) {
+    event?.preventDefault();
+    const normalized = code.trim().toUpperCase();
+    if (!/^MS-[A-Z0-9]{6}$/.test(normalized)) {
+      setError("Gunakan format MS- diikuti 6 huruf atau angka, misalnya MS-482731.");
+      return;
+    }
+    requestRef.current?.abort();
+    const controller = new AbortController();
+    requestRef.current = controller;
     setLoading(true);
     setError("");
+    setTrackedCode("");
     setResult(null);
+    setRefreshError(false);
     try {
-      const res = await api.get(`/tracking/${c}`);
-      setResult(res.data.data);
-      setTrackedCode(c);
-      setLastUpdate(new Date());
-    } catch (err) {
-      setError(err.response?.data?.message || "Kode tracking tidak ditemukan");
+      const response = await api.get(`/tracking/${encodeURIComponent(normalized)}`, { signal: controller.signal });
+      if (controller.signal.aborted) return;
+      setResult(response.data.data);
+      setTrackedCode(normalized);
+      setLastChecked(new Date());
+    } catch (requestError) {
+      if (!controller.signal.aborted) setError(requestError.response?.data?.message || "Belum dapat terhubung ke layanan tracking. Silakan coba lagi.");
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
-  };
+  }
 
-  // Pembaruan langsung: polling otomatis tiap 10 detik
   useEffect(() => {
     if (!trackedCode) return;
-    const t = setInterval(async () => {
+    const controller = new AbortController();
+    let timer;
+    async function refresh() {
       try {
-        const res = await api.get(`/tracking/${trackedCode}`);
-        setResult(res.data.data);
-        setLastUpdate(new Date());
-      } catch {}
-    }, 10000);
-    return () => clearInterval(t);
+        const response = await api.get(`/tracking/${encodeURIComponent(trackedCode)}`, { signal: controller.signal });
+        if (!controller.signal.aborted) {
+          setResult(response.data.data);
+          setLastChecked(new Date());
+          setRefreshError(false);
+        }
+      } catch {
+        if (!controller.signal.aborted) setRefreshError(true);
+      } finally {
+        if (!controller.signal.aborted) timer = setTimeout(refresh, 10000);
+      }
+    }
+    timer = setTimeout(refresh, 10000);
+    return () => { controller.abort(); clearTimeout(timer); };
   }, [trackedCode]);
 
-  const info = result ? stageInfo(result.status) : null;
-  const stage = info?.stage ?? 0;
+  function reset() {
+    requestRef.current?.abort();
+    setTrackedCode("");
+    setResult(null);
+    setCode("");
+    setError("");
+    setRefreshError(false);
+    setCopied(false);
+  }
+  async function copyCode() {
+    try { await navigator.clipboard.writeText(result.tracking_code); setCopied(true); }
+    catch { setCopied(false); }
+  }
+  const stageIndex = STAGES.findIndex(stage => stage.id === result?.status);
+  const info = STAGES[stageIndex] || { label: "Menunggu Konfirmasi", description: "Petugas sedang mengonfirmasi resep Anda." };
 
   return (
-    <div className="min-h-screen bg-slate-100 font-sans flex flex-col">
-      {/* Header */}
-      <header className="bg-white border-b border-slate-200">
-        <div className="max-w-5xl mx-auto px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 bg-blue-600 rounded-lg flex items-center justify-center">
-              <svg
-                className="w-5 h-5 text-white"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M12 6v6m0 0v6m0-6h6m-6 0H6"
-                />
-              </svg>
-            </div>
-            <span className="text-lg font-bold text-slate-800">MediSync</span>
-          </div>
-          <span className="px-4 py-2 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700">
-            Tracking Pelayanan Obat
-          </span>
+    <div className="flex min-h-screen flex-col bg-medisync-light text-medisync-dark">
+      <header className="border-b border-[#dce7ef] bg-white">
+        <div className="mx-auto flex min-h-[75px] max-w-[1440px] flex-wrap items-center justify-between gap-3 px-5 py-3 sm:px-8">
+          <div className="brand-lockup"><span className="brand-mark"><img src={icons.v1} alt="" /></span><span>MediSync</span></div>
+          <span className="hidden border-l border-[#dce7ef] pl-4 text-sm font-semibold sm:block">Tracking Pelayanan Obat</span>
+          {onBackToLogin && <button type="button" onClick={onBackToLogin} className="button-secondary">{backLabel}</button>}
         </div>
       </header>
-
-      <main className="flex-1 w-full">
-        <div className="max-w-3xl mx-auto px-6 py-10">
-          {!result ? (
-            <>
-              <div className="text-center mb-8">
-                <p className="text-xs font-bold tracking-[0.15em] uppercase text-blue-600 mb-2">
-                  LAYANAN PUBLIK
-                </p>
-                <h1 className="text-3xl font-semibold text-slate-800 mb-2">
-                  Lacak Pelayanan Obat
-                </h1>
-                <p className="text-slate-500 text-sm">
-                  Masukkan kode tracking yang diberikan dokter setelah resep
-                  disahkan.
-                </p>
-              </div>
-              <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6">
-                <form onSubmit={doTrack} className="flex gap-3">
-                  <input
-                    value={code}
-                    onChange={(e) => setCode(e.target.value.toUpperCase())}
-                    placeholder="Contoh: MS-482731"
-                    className="flex-1 px-4 py-3 border border-slate-300 rounded-lg text-sm font-mono focus:ring-2 focus:ring-blue-500 outline-none"
-                  />
-                  <button
-                    type="submit"
-                    disabled={loading}
-                    className="px-6 py-3 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 disabled:opacity-50"
-                  >
-                    {loading ? "Mencari..." : "Lacak"}
-                  </button>
-                </form>
-                {error && (
-                  <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-700">
-                    {error}
-                  </div>
-                )}
-              </div>
-            </>
-          ) : (
-            <>
-              <button
-                onClick={() => {
-                  setResult(null);
-                  setTrackedCode("");
-                  setCode("");
-                }}
-                className="flex items-center gap-1 text-sm text-blue-600 font-medium hover:underline mb-4"
-              >
-                <svg
-                  className="w-4 h-4"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M15 19l-7-7 7-7"
-                  />
-                </svg>
-                Lacak kode lain
-              </button>
-
-              {/* Kartu Status Saat Ini */}
-              <div className="bg-white border-2 border-blue-600 rounded-xl p-6 mb-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                  <p className="text-xs font-bold text-blue-600 uppercase tracking-wider mb-1">
-                    Status Saat Ini
-                  </p>
-                  <h2 className="text-3xl font-bold text-slate-800">
-                    {info.title}
-                  </h2>
-                  <p className="text-sm text-slate-500 mt-1">{info.desc}</p>
-                </div>
-                <div className="sm:text-right">
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1">
-                    Kode Tracking
-                  </p>
-                  <p className="text-xl font-bold font-mono text-slate-800">
-                    {result.tracking_code}
-                  </p>
-                </div>
-              </div>
-
-              {/* Kartu Progres + Stepper */}
-              <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 mb-6">
-                <div className="flex items-start justify-between mb-6 gap-3">
-                  <div>
-                    <h3 className="text-base font-bold text-slate-800">
-                      Progres Pelayanan Obat
-                    </h3>
-                    <p className="text-xs text-slate-500 mt-0.5">
-                      Status diperbarui langsung oleh instalasi farmasi.
-                    </p>
-                  </div>
-                  <span className="animate-live-teal flex items-center gap-2 px-3 py-1.5 rounded-full bg-teal-50 border border-teal-200 text-xs font-semibold text-teal-700 flex-shrink-0">
-                    <span className="relative flex h-2 w-2">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-teal-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-teal-500"></span>
-                    </span>
-                    Pembaruan Langsung
-                  </span>
-                </div>
-
-                {/* Stepper horizontal */}
-                <div className="flex items-center">
-                  {STAGES.map((label, i) => {
-                    const state =
-                      i < stage ? "done" : i === stage ? "current" : "todo";
-                    return (
-                      <Fragment key={label}>
-                        {i > 0 && (
-                          <div
-                            className={`flex-1 h-0.5 mx-1 ${i <= stage ? "bg-teal-500" : "bg-slate-200"}`}
-                          />
-                        )}
-                        <div
-                          className={`w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 ${
-                            state === "done"
-                              ? "bg-teal-500 text-white"
-                              : state === "current"
-                                ? "bg-blue-600 text-white ring-4 ring-blue-100 animate-live-blue"
-                                : "bg-white border-2 border-slate-300 text-slate-400"
-                          }`}
-                        >
-                          {state === "todo" ? (
-                            <span className="text-sm font-bold">{i + 1}</span>
-                          ) : (
-                            <svg
-                              className="w-4 h-4"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                strokeWidth={3}
-                                d="M5 13l4 4L19 7"
-                              />
-                            </svg>
-                          )}
-                        </div>
-                      </Fragment>
-                    );
-                  })}
-                </div>
-                <div className="grid grid-cols-5 mt-3 text-center">
-                  {STAGES.map((label, i) => {
-                    const state =
-                      i < stage ? "done" : i === stage ? "current" : "todo";
-                    return (
-                      <div key={label}>
-                        <p
-                          className={`text-sm font-semibold ${state === "done" ? "text-teal-600" : state === "current" ? "text-blue-600" : "text-slate-400"}`}
-                        >
-                          {label}
-                        </p>
-                        <p className="text-[11px] text-slate-400 mt-0.5">
-                          {state === "done"
-                            ? "Tahap selesai"
-                            : state === "current"
-                              ? "Status saat ini"
-                              : "Menunggu proses"}
-                        </p>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Info layanan */}
-              <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5 mb-6 grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-xs text-slate-400 mb-1">Layanan</p>
-                  <p className="text-sm font-bold text-slate-800">
-                    Instalasi Farmasi
-                  </p>
-                </div>
-                <div>
-                  <p className="text-xs text-slate-400 mb-1">
-                    Waktu pembaruan terakhir
-                  </p>
-                  <p className="text-sm font-bold text-slate-800">
-                    {lastUpdate ? formatWaktu(lastUpdate) : "-"}
-                  </p>
-                </div>
-              </div>
-
-              {/* Banner status */}
-              {result.status === "on_hold" && (
-                <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg flex items-start gap-3">
-                  <svg
-                    className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
-                    />
-                  </svg>
-                  <p className="text-sm text-red-700">
-                    Resep sedang ditahan menunggu konfirmasi hasil pemeriksaan
-                    penunjang. Pelayanan obat berlanjut setelah konfirmasi.
-                  </p>
-                </div>
-              )}
-              {result.status !== "on_hold" && stage < 3 && (
-                <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-lg flex items-start gap-3">
-                  <svg
-                    className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
-                    />
-                  </svg>
-                  <p className="text-sm text-amber-800">
-                    Silakan datang ke instalasi farmasi setelah status menjadi
-                    'Siap Diserahkan'.
-                  </p>
-                </div>
-              )}
-              {stage >= 3 && (
-                <div className="mb-6 p-4 bg-teal-50 border border-teal-200 rounded-lg flex items-start gap-3">
-                  <svg
-                    className="w-5 h-5 text-teal-600 flex-shrink-0 mt-0.5"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
-                  <p className="text-sm text-teal-800">
-                    Obat siap diambil. Tunjukkan kode tracking ini di loket
-                    instalasi farmasi.
-                  </p>
-                </div>
-              )}
-
-              <p className="text-xs text-slate-400 text-center">
-                Halaman publik hanya menampilkan informasi status pelayanan
-                obat. Tidak ada identitas pasien atau informasi medis yang
-                ditampilkan.
-              </p>
-            </>
-          )}
+      <main className="w-full flex-1">
+        <div className="mx-auto max-w-[816px] px-4 py-7 sm:px-6 sm:py-10">
+          {!result ? <>
+            <div className="mb-6 text-center">
+              <div className="mx-auto mb-4 grid h-[60px] w-[60px] place-items-center rounded-2xl bg-[#e3f7f5]"><img src={trackingPill} alt="" /></div>
+              <p className="eyebrow mb-3 text-medisync-primary">Layanan pasien tanpa login</p>
+              <h1 className="text-[28px] font-semibold tracking-tight sm:text-[32px]">Tracking Pelayanan Obat</h1>
+              <p className="mt-3 text-lg">Pantau status pelayanan obat Anda</p>
+              <p className="mt-2 text-sm leading-relaxed text-slate-500">Masukkan kode tracking yang diberikan oleh dokter.</p>
+            </div>
+            <div className={panel + " mx-auto max-w-[480px] p-6"}>
+              <form onSubmit={doTrack} className="space-y-3" aria-busy={loading}>
+                <label htmlFor="tracking-code" className="block text-sm font-semibold">Kode Tracking</label>
+                <input id="tracking-code" autoComplete="off" autoCapitalize="characters" spellCheck={false} maxLength={9} value={code} required disabled={loading} onChange={event => { setCode(event.target.value.toUpperCase()); setError(""); }} placeholder="Contoh: MS-482731" aria-invalid={Boolean(error)} aria-describedby={error ? "tracking-error" : "tracking-hint"} className="min-h-[50px] w-full rounded-[10px] border border-[#cfdae4] px-3.5 py-3 font-mono text-base uppercase placeholder:font-sans placeholder:normal-case placeholder:text-slate-400" />
+                <p id="tracking-hint" className="text-xs text-slate-500">Format MS- diikuti 6 huruf atau angka.</p>
+                {error && <p id="tracking-error" role="alert" className="form-error">{error}</p>}
+                <button type="submit" disabled={loading} className="button-primary w-full"><img src={trackingSearch} alt="" />{loading ? "Mencari resep..." : "Lacak status obat"}</button>
+              </form>
+              <div className="mt-5 flex items-start gap-3 border-t border-[#dce7ef] pt-4 text-xs"><img src={trackingPrivacy} alt="" /><div><p className="font-semibold">Simpan kode tracking Anda</p><p className="mt-1 leading-relaxed text-slate-500">Kode ini digunakan untuk melihat nama pasien, dokter, detail obat, dan progres pelayanan resep Anda.</p></div></div>
+            </div>
+          </> : <>
+            <button type="button" onClick={reset} className="mb-5 flex min-h-10 items-center gap-2 text-sm font-semibold text-medisync-primary"><img src={icons.v76} alt="" />Lacak kode lain</button>
+            <section aria-labelledby="tracking-status" className="mb-5 flex flex-col justify-between gap-5 rounded-xl border border-medisync-primary border-t-[3px] bg-white p-5 sm:flex-row sm:items-center sm:p-7">
+              <div><p className="mb-2 text-xs font-semibold text-medisync-primary">Status saat ini</p><h1 id="tracking-status" aria-live="polite" className="text-[28px] font-semibold tracking-tight">{info.label}</h1><p className="mt-2 text-sm leading-relaxed text-slate-500">{info.description}</p></div>
+              <div className="shrink-0 sm:border-l sm:border-[#dce7ef] sm:pl-6"><p className="text-[11px] font-medium uppercase tracking-wide text-slate-500">Kode tracking</p><p className="mt-1 font-mono text-xl font-bold">{result.tracking_code}</p><button type="button" onClick={copyCode} className="mt-2 min-h-8 text-xs font-semibold text-medisync-primary">{copied ? "Kode tersalin" : "Salin kode"}</button></div>
+            </section>
+            <section aria-labelledby="patient-info" className={panel + " mb-5 p-5 sm:p-6"}>
+              <h2 id="patient-info" className="mb-4 text-base font-semibold">Informasi resep Anda</h2>
+              <dl className="grid gap-5 sm:grid-cols-2"><div><dt className="text-xs text-slate-500">Nama pasien</dt><dd className="mt-1 text-base font-semibold">{result.patient_name || "—"}</dd></div><div><dt className="text-xs text-slate-500">Dokter pemberi resep</dt><dd className="mt-1 text-base font-semibold">{result.doctor_name || "—"}</dd></div></dl>
+              <p className="mt-4 border-t border-slate-100 pt-3 text-xs text-slate-500">Tanggal resep · {formatDate(result.created_at)}</p>
+            </section>
+            <section aria-labelledby="tracking-progress" className={panel + " mb-5 p-5 sm:p-6"}>
+              <div className="mb-6 flex flex-wrap items-start justify-between gap-3"><div><h2 id="tracking-progress" className="text-base font-semibold">Progres pelayanan obat</h2><p className="mt-1 text-xs leading-relaxed text-slate-500">Diperbarui otomatis setiap 10 detik.</p></div><span role="status" className={`flex items-center gap-2 rounded-full px-3 py-1.5 text-[11px] font-semibold ${refreshError ? "bg-amber-50 text-amber-800" : "bg-[#e3f7f5] text-teal-700"}`}><span className="h-1.5 w-1.5 rounded-full bg-current" />{refreshError ? "Menghubungkan ulang" : "Terhubung"}</span></div>
+              <ol className="tracking-timeline">{STAGES.map((stage, index) => {
+                const done = index < stageIndex;
+                const current = index === stageIndex;
+                const event = result.status_events?.find(item => item.to_status === stage.id);
+                return <li key={stage.id} className={done ? "is-done" : current ? "is-current" : ""} aria-current={current ? "step" : undefined}><span className="timeline-dot">{done || current ? <img src={icons.v78} alt="" /> : index + 1}</span><div><p className="timeline-label">{stage.label}</p><p className="timeline-description">{event ? new Intl.DateTimeFormat("id-ID", { hour: "2-digit", minute: "2-digit", timeZone: "Asia/Jakarta" }).format(new Date(event.created_at)) + " WIB" : done ? "Tahap selesai" : current ? "Status saat ini" : "Menunggu proses"}</p></div></li>;
+              })}</ol>
+              {refreshError && <p role="alert" className="mt-4 rounded-lg bg-amber-50 p-3 text-xs leading-relaxed text-amber-800">Koneksi terputus. Status terakhir tetap ditampilkan dan akan diperbarui saat koneksi kembali.</p>}
+            </section>
+            <section aria-labelledby="tracking-drugs" className={panel + " mb-5 overflow-hidden"}>
+              <div className="flex items-center justify-between border-b border-[#e8eef3] px-5 py-4 sm:px-6"><h2 id="tracking-drugs" className="text-base font-semibold">Detail obat</h2><span className="text-xs text-slate-500">{result.items?.length || 0} jenis obat</span></div>
+              <div className="divide-y divide-[#e8eef3]">{result.items?.map((item, index) => <article key={`${index}-${item.drug_name}`} className="p-5 sm:px-6"><div className="mb-3 flex flex-wrap items-baseline justify-between gap-2"><h3 className="text-sm font-semibold">{item.drug_name}</h3><span className="text-xs text-slate-600">{item.quantity}</span></div><dl className="grid gap-3 text-sm sm:grid-cols-[1fr_2fr]"><div><dt className="text-xs text-slate-500">Dosis</dt><dd className="mt-1">{item.dosage}</dd></div><div><dt className="text-xs text-slate-500">Aturan pakai</dt><dd className="mt-1 leading-relaxed">{item.instructions}</dd></div></dl></article>)}{!result.items?.length && <p className="p-5 text-sm text-slate-500">Rincian obat belum tersedia. Hubungi petugas farmasi.</p>}</div>
+            </section>
+            <div className={panel + " mb-5 grid gap-4 p-5 text-sm sm:grid-cols-2"}><div><p className="text-xs text-slate-500">Layanan</p><p className="mt-1 font-semibold">Instalasi Farmasi</p></div><div><p className="text-xs text-slate-500">Pembaruan resep terakhir</p><p className="mt-1 font-semibold">{formatDate(result.updated_at)}</p></div></div>
+            <div className={`mb-5 flex items-start gap-3 rounded-lg border px-4 py-3 text-sm leading-relaxed ${stageIndex >= 3 ? "border-teal-200 bg-teal-50 text-teal-900" : "border-amber-200 bg-amber-50 text-amber-900"}`}><img src={icons.v80} alt="" /><p>{stageIndex === 4 ? "Obat telah diserahkan. Jika ada pertanyaan mengenai aturan pakai, hubungi petugas farmasi." : stageIndex === 3 ? "Obat siap diambil. Tunjukkan kode tracking Anda kepada petugas instalasi farmasi." : "Silakan datang ke instalasi farmasi setelah status menjadi ‘Siap Diserahkan’."}</p></div>
+            <p className="text-center text-xs leading-relaxed text-slate-500">Informasi resep dapat diakses menggunakan kode tracking. Simpan kode Anda dengan baik.{lastChecked && <span className="mt-1 block">Terakhir terhubung {formatDate(lastChecked)}</span>}</p>
+          </>}
         </div>
       </main>
-
-      {/* Footer */}
-      <footer className="bg-white border-t border-slate-200">
-        <div className="max-w-5xl mx-auto px-6 py-4 flex flex-col sm:flex-row items-center justify-between gap-2">
-          <p className="text-xs text-slate-400">
-            © 2025 RS Medika Utama · MediSync · Informasi status pelayanan obat
-          </p>
-          {onBackToLogin && (
-            <button
-              onClick={onBackToLogin}
-              className="text-xs text-slate-500 hover:text-blue-600 underline"
-            >
-              Kembali ke login internal
-            </button>
-          )}
-        </div>
-      </footer>
+      <footer className="border-t border-[#dce7ef] bg-white"><div className="mx-auto flex max-w-5xl flex-wrap items-center justify-between gap-3 px-6 py-5 text-xs text-slate-500"><p>© {new Date().getFullYear()} RS Medika Utama · MediSync</p>{onBackToLogin && <button type="button" className="min-h-9 font-semibold text-medisync-primary" onClick={onBackToLogin}>{backLabel}</button>}</div></footer>
     </div>
   );
 }

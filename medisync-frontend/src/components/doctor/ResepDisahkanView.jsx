@@ -1,272 +1,56 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import api from "../../services/api";
+import { printTrackingSlip } from "../../utils/printTrackingSlip";
+import icons from "../../assets/figma/icons";
+import { formatDate, statusLabel } from "../../utils/format";
 
-export default function ResepDisahkanView({ onBackToDashboard }) {
-  const [presc, setPresc] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem("lastPrescription"));
-    } catch {
-      return null;
-    }
-  });
+export default function ResepDisahkanView({ onBackToDashboard, onTrack }) {
+  const [prescription, setPrescription] = useState(null);
+  const [error, setError] = useState("");
   const [confirming, setConfirming] = useState(false);
-
-  const isHold = presc?.status === "on_hold";
-  const kode =
-    presc?.tracking_code || localStorage.getItem("trackingCode") || "MS-000000";
-
-  const copyToClipboard = () => {
-    navigator.clipboard.writeText(kode);
-    alert("Kode tracking disalin: " + kode);
-  };
-
-  // MED-5: konfirmasi hasil → lepas hold → tracking code terbit
-  const konfirmasiHasil = async () => {
-    setConfirming(true);
-    try {
-      const res = await api.put(`/prescriptions/${presc.id}`, {
-        status: "approved",
-      });
-      const updated = res.data.data;
-      const next = {
-        ...presc,
-        status: updated.status,
-        tracking_code: updated.tracking_code,
-      };
-      setPresc(next);
-      localStorage.setItem("lastPrescription", JSON.stringify(next));
-      if (updated.tracking_code)
-        localStorage.setItem("trackingCode", updated.tracking_code);
-    } catch (error) {
-      alert(
-        "Gagal konfirmasi hasil: " +
-          (error.response?.data?.message || error.message),
-      );
-    } finally {
-      setConfirming(false);
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    const controller = new AbortController();
+    async function load() {
+      try {
+        const id = JSON.parse(localStorage.getItem("lastPrescription") || "null")?.id;
+        if (!id) throw new Error("Belum ada resep tersimpan. Buka riwayat untuk melihat resep Anda.");
+        const response = await api.get(`/prescriptions/${id}`, { signal: controller.signal });
+        if (!controller.signal.aborted) setPrescription(response.data.data);
+      } catch (requestError) {
+        if (!controller.signal.aborted) setError(requestError.response?.data?.message || requestError.message);
+      }
     }
-  };
-
-  return (
-    <div>
-      <div className="mb-6">
-        <p className="text-xs font-bold text-blue-600 tracking-wider uppercase mb-1">
-          PORTAL DOKTER / RESEP
-        </p>
-        <h2 className="text-2xl font-bold text-slate-800">Resep Disahkan</h2>
-        <p className="text-slate-500 text-sm mt-1">
-          Tahap 3: Pengesahan berhasil pada 18 Feb 2025, 09:42 WIB •
-          RSP-250218-042
-        </p>
-      </div>
-
-      <div className="grid grid-cols-3 gap-6">
-        <div className="col-span-2 bg-white p-8 rounded-xl border border-slate-200 shadow-sm text-center">
-          {isHold ? (
-            <>
-              <div className="w-16 h-16 bg-amber-500 rounded-full flex items-center justify-center mx-auto mb-4">
-                <svg
-                  className="w-8 h-8 text-white"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"
-                  />
-                </svg>
-              </div>
-              <h3 className="text-2xl font-bold text-slate-800 mb-2">
-                Resep Ditahan Otomatis
-              </h3>
-              <p className="text-slate-500 text-sm mb-6">
-                Resep menunggu hasil pemeriksaan penunjang sebelum masuk antrean
-                farmasi.
-              </p>
-              <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 text-left">
-                <p className="text-xs font-bold text-amber-700 uppercase tracking-wider mb-1">
-                  Alasan Penahanan
-                </p>
-                <p className="text-sm text-amber-800">
-                  {presc?.hold_reason ||
-                    "Menunggu hasil pemeriksaan penunjang."}
-                </p>
-              </div>
-              <button
-                onClick={konfirmasiHasil}
-                disabled={confirming}
-                className="px-8 py-3 bg-teal-600 text-white rounded-lg text-sm font-semibold hover:bg-teal-700 shadow-sm disabled:opacity-50 mb-4"
-              >
-                {confirming
-                  ? "Mengkonfirmasi..."
-                  : "Konfirmasi Hasil Pemeriksaan"}
-              </button>
-              <p className="text-xs text-slate-400">
-                Kode tracking dibuat otomatis setelah konfirmasi hasil.
-              </p>
-            </>
-          ) : (
-            <>
-              <div className="w-16 h-16 bg-teal-500 rounded-full flex items-center justify-center mx-auto mb-4">
-                <svg
-                  className="w-8 h-8 text-white"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={3}
-                    d="M5 13l4 4L19 7"
-                  />
-                </svg>
-              </div>
-              <h3 className="text-2xl font-bold text-slate-800 mb-2">
-                Resep Berhasil Disahkan
-              </h3>
-              <p className="text-slate-500 text-sm mb-8">
-                Resep telah dikirim ke instalasi farmasi.
-              </p>
-
-              <div className="bg-blue-50 border border-blue-200 rounded-xl p-6 mb-6">
-                <p className="text-xs font-bold text-blue-600 tracking-wider uppercase mb-2">
-                  KODE TRACKING PASIEN
-                </p>
-                <p className="text-4xl font-bold text-slate-900 font-mono mb-3">
-                  {kode}
-                </p>
-                <button
-                  onClick={copyToClipboard}
-                  className="text-sm text-blue-600 font-medium hover:underline flex items-center gap-1 mx-auto"
-                >
-                  <svg
-                    className="w-4 h-4"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"
-                    />
-                  </svg>
-                  Salin Kode
-                </button>
-              </div>
-
-              <div className="bg-teal-50 border border-teal-200 rounded-lg p-4 mb-8">
-                <p className="text-sm font-semibold text-teal-800 mb-1">
-                  Berikan kode ini kepada pasien
-                </p>
-                <p className="text-xs text-teal-600">
-                  Pasien melacak pelayanan obat di halaman publik tanpa login.
-                </p>
-              </div>
-            </>
-          )}
-
-          <div className="flex gap-3 justify-center">
-            <button
-              onClick={onBackToDashboard}
-              className="px-6 py-2.5 border border-slate-300 rounded-lg text-sm font-semibold text-slate-600 hover:bg-slate-50"
-            >
-              Kembali ke Dashboard
-            </button>
-          </div>
-        </div>
-
-        <div className="space-y-6">
-          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-            <h3 className="text-base font-bold text-slate-800 mb-4">
-              Informasi Resep
-            </h3>
-            <div className="space-y-3 text-sm">
-              <div>
-                <p className="text-xs text-slate-500">Dokter</p>
-                <p className="font-semibold text-slate-800">dr. Andi Saputra</p>
-              </div>
-              <div>
-                <p className="text-xs text-slate-500">Tanggal</p>
-                <p className="font-semibold text-slate-800">
-                  18 Feb 2025 • 09:42 WIB
-                </p>
-              </div>
-              <div className="pt-3 border-t border-slate-100">
-                <p className="text-xs text-slate-500 tracking-wider uppercase">
-                  Status
-                </p>
-                <p
-                  className={`text-sm font-semibold ${isHold ? "text-amber-600" : "text-teal-600"}`}
-                >
-                  {isHold ? "Ditahan (menunggu hasil)" : "Terkirim ke Farmasi"}
-                </p>
-              </div>
-              <div>
-                <p className="text-xs text-slate-500 tracking-wider uppercase">
-                  Kode Tracking
-                </p>
-                <p
-                  className={`text-2xl font-bold font-mono ${isHold ? "text-slate-300" : "text-blue-600"}`}
-                >
-                  {isHold ? "—" : kode}
-                </p>
-              </div>
-            </div>
-          </div>
-
-          <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-sm">
-            <h3 className="text-base font-bold text-slate-800 mb-4">
-              Ringkasan Resep
-            </h3>
-            <p className="text-xs text-slate-500 mb-3">
-              Hanya dapat dilihat • {presc?.patient_name || "-"}
-            </p>
-            <div className="space-y-3">
-              {(presc?.items || []).map((item, i) => (
-                <div key={i}>
-                  <p className="text-sm font-semibold text-slate-800">
-                    {item.nama} • {item.jumlah}
-                  </p>
-                  <p className="text-xs text-slate-500">
-                    Dosis {item.dosis} • {item.aturan}
-                  </p>
-                  {item.catatan && (
-                    <p className="text-xs text-slate-500">
-                      Catatan: {item.catatan}
-                    </p>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-6 p-4 bg-blue-50 border border-blue-200 rounded-lg flex items-start gap-3">
-        <svg
-          className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"
-          />
-        </svg>
-        <p className="text-sm text-blue-700">
-          Kode tracking unik dibuat otomatis oleh sistem untuk setiap resep.
-          Resep yang telah disahkan tidak dapat diedit atau dihapus.
-        </p>
-      </div>
-    </div>
-  );
+    load();
+    return () => controller.abort();
+  }, []);
+  async function release() {
+    if (confirming) return;
+    setConfirming(true);
+    setError("");
+    try {
+      const response = await api.put(`/prescriptions/${prescription.id}`, { status: "approved" });
+      setPrescription(previous => ({ ...previous, ...response.data.data }));
+    } catch (requestError) { setError(requestError.response?.data?.message || "Pengesahan belum tersimpan. Silakan coba lagi."); }
+    finally { setConfirming(false); }
+  }
+  async function copy() {
+    try { await navigator.clipboard.writeText(prescription.tracking_code); setCopied(true); }
+    catch { setError("Kode belum dapat disalin otomatis. Silakan salin kode yang ditampilkan."); }
+  }
+  function printSlip() {
+    try { printTrackingSlip(prescription); }
+    catch (printError) { setError(printError.message); }
+  }
+  const held = prescription?.status === "on_hold";
+  return <section className="mx-auto max-w-[1440px] space-y-5">
+    <div><p className="mb-2 text-xs font-semibold text-medisync-primary">PORTAL DOKTER / RESEP</p><h1 className="text-2xl font-semibold tracking-tight">{held ? "Resep Menunggu Konfirmasi" : "Resep Disahkan"}</h1><p className="mt-1 text-sm text-slate-500">{prescription ? `Resep #${prescription.id} · ${formatDate(prescription.created_at)}` : "Memuat resep tersimpan..."}</p></div>
+    {error && <p role="alert" className="form-error">{error}</p>}
+    {prescription && <div className="grid items-start gap-5 xl:grid-cols-[3fr_2fr]"><div className="space-y-5"><article className="rounded-xl border border-[#dce7ef] bg-white p-6 text-center sm:p-8">
+      <span className={`mx-auto mb-5 grid h-[60px] w-[60px] place-items-center rounded-full ${held ? "bg-amber-100 text-amber-800" : "bg-[#0d9d92]"}`}>{held ? <span className="text-2xl">!</span> : <img src={icons.v47} alt="" />}</span>
+      <h2 className="text-xl font-semibold">{held ? "Resep tersimpan dan ditahan" : "Resep berhasil disahkan"}</h2><p className="mb-5 mt-2 text-sm text-slate-500">{held ? prescription.hold_reason : "Resep telah dikirim ke instalasi farmasi."}</p>
+      {held ? <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-left text-sm text-amber-900"><p className="leading-relaxed">Konfirmasikan setelah hasil pemeriksaan penunjang telah ditinjau. Kode tracking akan diterbitkan saat resep disahkan.</p><label className="mt-4 flex items-start gap-2 text-xs"><input type="checkbox" required id="results-reviewed" className="mt-0.5 h-4 w-4 accent-[#1269d3]" />Hasil pemeriksaan penunjang telah saya tinjau dan resep dapat dilanjutkan.</label><button type="button" className="button-primary mt-4 w-full" disabled={confirming} onClick={() => { if (document.getElementById("results-reviewed").reportValidity()) release(); }}>{confirming ? "Mengesahkan..." : "Konfirmasi hasil & sahkan"}</button></div> : <><div className="rounded-xl border border-[#dce7ef] bg-[#f4f8ff] p-5"><p className="text-[10px] font-semibold uppercase tracking-wide text-medisync-primary">Kode tracking pasien</p><p className="my-3 break-all font-mono text-3xl font-bold">{prescription.tracking_code}</p><div className="flex flex-wrap items-center justify-center gap-2"><button type="button" className="button-secondary" onClick={copy}><img src={icons.v48} alt="" />{copied ? "Kode tersalin" : "Salin kode"}</button><button type="button" className="button-secondary" onClick={printSlip}>Cetak slip kode unik</button></div></div><div className="mt-4 rounded-lg bg-[#e3f7f5] p-4 text-xs leading-relaxed text-teal-800"><strong>Berikan kode ini kepada pasien</strong><p className="mt-1">Pasien dapat memantau status dan rincian obat tanpa login.</p></div></>}
+      <div className="mt-5 flex flex-wrap justify-between gap-3"><button type="button" className="button-secondary" onClick={onBackToDashboard}>Kembali ke dashboard</button>{!held && onTrack && <button type="button" className="button-primary" onClick={() => onTrack(prescription.tracking_code)}>Lihat halaman tracking</button>}</div>
+    </article></div><div className="space-y-5"><article className="rounded-xl border border-[#dce7ef] bg-white p-5"><h2 className="text-lg font-semibold">Informasi Resep</h2><p className="mt-3 text-sm">{prescription.doctor?.name}</p><p className="mt-2 text-xs text-slate-500">{formatDate(prescription.created_at)}</p><p className="mt-4 text-xs text-slate-500">Pasien</p><p className="mt-1 text-sm font-semibold">{prescription.examination?.patient?.name}</p></article><article className="rounded-xl border border-[#dce7ef] bg-white p-5"><h2 className="text-lg font-semibold">Ringkasan Resep</h2><p className="mt-2 text-xs font-medium text-teal-700">{statusLabel(prescription.status)}</p><div className="mt-3 divide-y divide-slate-100">{prescription.items?.map(item => <div key={item.id} className="py-3 text-sm"><p className="font-semibold">{item.drug_name} · {item.quantity}</p><p className="mt-1 text-xs leading-relaxed text-slate-600">{item.dosage} · {item.instructions}</p>{item.notes && <p className="mt-1 text-xs text-slate-500">Catatan: {item.notes}</p>}</div>)}</div></article></div></div>}
+  </section>;
 }
