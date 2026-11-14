@@ -15,7 +15,35 @@ class Prescription extends Model
         'status',
         'hold_reason',
         'tracking_code',
+        'bpjs_card_checked',
+        'bpjs_identity_checked',
+        'bpjs_documents_checked',
+        'bpjs_notes',
+        'bpjs_checked_by',
+        'bpjs_checked_at',
+        'bpjs_verified_at',
     ];
+
+    protected function casts(): array
+    {
+        return [
+            'bpjs_card_checked' => 'boolean',
+            'bpjs_identity_checked' => 'boolean',
+            'bpjs_documents_checked' => 'boolean',
+            'bpjs_checked_at' => 'datetime',
+            'bpjs_verified_at' => 'datetime',
+        ];
+    }
+
+    public function bpjsVerifier()
+    {
+        return $this->belongsTo(User::class, 'bpjs_checked_by')->select(['id', 'name']);
+    }
+
+    public function statusEvents()
+    {
+        return $this->hasMany(PrescriptionStatusEvent::class)->orderBy('id');
+    }
 
     // Relasi: Prescription milik satu Examination
     public function examination()
