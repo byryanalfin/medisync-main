@@ -1,36 +1,38 @@
 <?php
 
 namespace App\Http\Controllers\Api;
+
 use App\Http\Controllers\Controller;
 use App\Models\Patient;
+use Illuminate\Database\QueryException;
 use Illuminate\Http\Request;
 
 class PatientController extends Controller
 {
     public function index()
     {
-        $patients = Patient::orderBy('created_at', 'desc')->get();
+        $patients = Patient::withCount('examinations')->orderBy('created_at', 'desc')->get();
 
         return response()->json([
             'success' => true,
-            'data' => $patients
+            'data' => $patients,
         ]);
     }
 
     public function show($id)
     {
-        $patient = Patient::with(['examinations.prescription.items'])->find($id);
+        $patient = Patient::with(['examinations.prescription.items', 'examinations.doctor:id,name'])->find($id);
 
-        if (!$patient) {
+        if (! $patient) {
             return response()->json([
                 'success' => false,
-                'message' => 'Pasien tidak ditemukan'
+                'message' => 'Pasien tidak ditemukan',
             ], 404);
         }
 
         return response()->json([
             'success' => true,
-            'data' => $patient
+            'data' => $patient,
         ]);
     }
 
@@ -39,7 +41,7 @@ class PatientController extends Controller
         $validated = $request->validate([
             'rm_number' => 'required|unique:patients,rm_number',
             'name' => 'required|string|max:255',
-            'birth_date' => 'required|date',
+            'birth_date' => 'required|date|before_or_equal:today',
             'gender' => 'required|in:Laki-laki,Perempuan',
             'allergies' => 'nullable|string',
         ]);
@@ -49,7 +51,7 @@ class PatientController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Pasien berhasil ditambahkan',
-            'data' => $patient
+            'data' => $patient,
         ], 201);
     }
 
@@ -57,17 +59,17 @@ class PatientController extends Controller
     {
         $patient = Patient::find($id);
 
-        if (!$patient) {
+        if (! $patient) {
             return response()->json([
                 'success' => false,
-                'message' => 'Pasien tidak ditemukan'
+                'message' => 'Pasien tidak ditemukan',
             ], 404);
         }
 
         $validated = $request->validate([
-            'rm_number' => 'required|unique:patients,rm_number,' . $id,
+            'rm_number' => 'required|unique:patients,rm_number,'.$id,
             'name' => 'required|string|max:255',
-            'birth_date' => 'required|date',
+            'birth_date' => 'required|date|before_or_equal:today',
             'gender' => 'required|in:Laki-laki,Perempuan',
             'allergies' => 'nullable|string',
         ]);
@@ -77,7 +79,7 @@ class PatientController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Pasien berhasil diupdate',
-            'data' => $patient
+            'data' => $patient,
         ]);
     }
 
@@ -85,25 +87,29 @@ class PatientController extends Controller
     {
         $patient = Patient::find($id);
 
-        if (!$patient) {
+        if (! $patient) {
             return response()->json([
                 'success' => false,
-                'message' => 'Pasien tidak ditemukan'
+                'message' => 'Pasien tidak ditemukan',
             ], 404);
+        }
+
+        if ($patient->examinations()->exists()) {
+            return response()->json(['success' => false, 'message' => 'Pasien tidak dapat dihapus karena memiliki riwayat pemeriksaan atau resep.'], 409);
         }
 
         try {
             $patient->delete();
-        } catch (\Illuminate\Database\QueryException $e) {
+        } catch (QueryException $e) {
             return response()->json([
                 'success' => false,
-                'message' => 'Pasien tidak dapat dihapus karena memiliki riwayat pemeriksaan atau resep.'
+                'message' => 'Pasien tidak dapat dihapus karena memiliki riwayat pemeriksaan atau resep.',
             ], 409);
         }
 
         return response()->json([
             'success' => true,
-            'message' => 'Pasien berhasil dihapus'
+            'message' => 'Pasien berhasil dihapus',
         ]);
     }
 }
